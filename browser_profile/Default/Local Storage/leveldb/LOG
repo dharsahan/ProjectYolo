@@ -1,0 +1,9 @@
+2026/04/12-07:47:15.144 f52eb Reusing MANIFEST /home/dharshan/project-Yolo/browser_profile/Default/Local Storage/leveldb/MANIFEST-000001
+2026/04/12-07:47:15.164 f52eb Recovering log #3
+2026/04/12-07:47:15.164 f52eb Reusing old log /home/dharshan/project-Yolo/browser_profile/Default/Local Storage/leveldb/000003.log 
+2026/04/12-08:22:09.352 f52ec Level-0 table #5: started
+2026/04/12-08:22:09.358 f52ec Level-0 table #5: 75870 bytes OK
+2026/04/12-08:22:09.360 f52ec Delete type=0 #3
+2026/04/12-08:38:04.303 f52ec Level-0 table #7: started
+2026/04/12-08:38:04.339 f52ec Level-0 table #7: 952709 bytes OK
+2026/04/12-08:38:04.342 f52ec Delete type=0 #4

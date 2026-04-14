@@ -1,0 +1,116 @@
+Metadata-Version: 2.3
+Name: camoufox
+Version: 0.4.11
+Summary: Wrapper around Playwright to help launch Camoufox
+License: MIT
+Keywords: client,fingerprint,browser,scraping,injector,firefox,playwright
+Author: daijro
+Author-email: daijro.dev@gmail.com
+Requires-Python: >=3.8,<4.0
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Internet :: WWW/HTTP :: Browsers
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Provides-Extra: geoip
+Requires-Dist: browserforge (>=1.2.1,<2.0.0)
+Requires-Dist: click
+Requires-Dist: geoip2 ; extra == "geoip"
+Requires-Dist: language-tags
+Requires-Dist: lxml
+Requires-Dist: numpy
+Requires-Dist: orjson
+Requires-Dist: platformdirs
+Requires-Dist: playwright
+Requires-Dist: pysocks
+Requires-Dist: pyyaml
+Requires-Dist: requests
+Requires-Dist: screeninfo
+Requires-Dist: tqdm
+Requires-Dist: typing_extensions
+Requires-Dist: ua_parser
+Project-URL: Homepage, https://camoufox.com/python
+Project-URL: Repository, https://github.com/daijro/camoufox
+Description-Content-Type: text/markdown
+
+<div align="center">
+
+# Camoufox Python Interface
+
+#### Lightweight wrapper around the Playwright API to help launch Camoufox.
+
+</div>
+
+> [!NOTE]
+> All the the latest documentation is avaliable [here](https://camoufox.com/python).
+
+---
+
+## What is this?
+
+This Python library wraps around Playwright's API to help automatically generate & inject unique device characteristics (OS, CPU info, navigator, fonts, headers, screen dimensions, viewport size, WebGL, addons, etc.) into Camoufox.
+
+It uses [BrowserForge](https://github.com/daijro/browserforge) under the hood to generate fingerprints that mimic the statistical distribution of device characteristics in real-world traffic.
+
+In addition, it will also calculate your target geolocation, timezone, and locale to avoid proxy protection ([see demo](https://i.imgur.com/UhSHfaV.png)).
+
+---
+
+## Installation
+
+First, install the `camoufox` package:
+
+```bash
+pip install -U camoufox[geoip]
+```
+
+The `geoip` parameter is optional, but heavily recommended if you are using proxies. It will download an extra dataset to determine the user's longitude, latitude, timezone, country, & locale.
+
+Next, download the Camoufox browser:
+
+**Windows**
+
+```bash
+camoufox fetch
+```
+
+**MacOS & Linux**
+
+```bash
+python3 -m camoufox fetch
+```
+
+To uninstall, run `camoufox remove`.
+
+<details>
+<summary>CLI options</summary>
+
+```
+Usage: python -m camoufox [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  fetch    Fetch the latest version of Camoufox
+  path     Display the path to the Camoufox executable
+  remove   Remove all downloaded files
+  server   Launch a Playwright server
+  test     Open the Playwright inspector
+  version  Display the current version
+```
+
+</details>
+
+<hr width=50>
+
+## Usage
+
+All of the latest documentation is avaliable at [camoufox.com/python](https://camoufox.com/python).
+
