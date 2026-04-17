@@ -1,262 +1,93 @@
-# Yolo: Personal Self-Improving AI Assistant
+# ProjectYolo
 
-Yolo is a persistent, tool-using personal AI assistant designed to run 24/7 on a low-cost server.
 
-It supports:
-- Persistent cross-session memory and profile modeling
-- Self-improving behaviors (experience learning + skill authoring/optimization)
-- Pluggable LLM providers (OpenAI, OpenRouter, Anthropic, OpenAI-compatible endpoints)
-- Multi-gateway access (CLI, Telegram, Discord)
-- Background missions and recurring schedules (including daily tasks)
-- Optional webhook mode + lightweight health endpoint for production observability
 
-## Architecture
+## Getting started
 
-- `agent.py`: Core planning/acting loop with tool calls and HITL confirmation support
-- `llm_router.py`: Provider-agnostic model routing
-- `session.py`: Session lifecycle + persistence hooks
-- `tools/*`: Capabilities (files, web, browser, memory, skills, scheduling, artifacts)
-- Browser automation is powered by Camoufox (anti-detect Firefox wrapper)
-- `bot.py`: Telegram gateway + uploads (documents, photos OCR, audio/voice transcript)
-- `discord_gateway.py`: Discord chat gateway
-- `cli.py`: Local terminal REPL gateway
-- `server.py`: Unified process entrypoint for Telegram/Discord/all
+To make it easy for you to get started with GitLab, here's a list of recommended next steps.
 
-## Quick Start
+Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
 
-1) Create environment and install dependencies:
+## Add your files
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
+* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+
+```
+cd existing_repo
+git remote add origin https://gitlab.com/dharsahan-group/projectyolo.git
+git branch -M main
+git push -uf origin main
 ```
 
-Browser runtime setup (Camoufox):
+## Integrate with your tools
 
-For standard/stable releases, you can use `camoufox`.
-To make full use of per-context fingerprints and hardware spoofing, use `cloverlabs-camoufox`.
-This project is configured for `cloverlabs-camoufox`.
+* [Set up project integrations](https://gitlab.com/dharsahan-group/projectyolo/-/settings/integrations)
 
-Use a dedicated virtual environment to avoid conflicts between Camoufox package variants.
+## Collaborate with your team
 
-```bash
-pip install -r requirements.txt
-python -m camoufox fetch
-```
+* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
+* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
+* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
+* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
+* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
 
-On fresh Linux machines you may also need:
+## Test and Deploy
 
-```bash
-sudo apt install -y libgtk-3-0 libx11-xcb1 libasound2
-```
+Use the built-in continuous integration in GitLab.
 
-2) Create `.env` from the template below and set your keys.
+* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
+* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
+* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
+* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
+* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
 
-3) Run a gateway:
+***
 
-- CLI:
+# Editing this README
 
-```bash
-python cli.py --user-id 1
-```
+When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
 
-- Telegram:
+## Suggestions for a good README
 
-```bash
-python bot.py
-```
+Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
 
-- Discord:
+## Name
+Choose a self-explaining name for your project.
 
-```bash
-python server.py --mode discord
-```
+## Description
+Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
 
-- All gateways in one process:
+## Badges
+On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
 
-```bash
-python server.py --mode all
-```
+## Visuals
+Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
 
-## LLM Provider Switching
+## Installation
+Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
 
-Set `LLM_PROVIDER` and corresponding keys. You can switch providers without code changes.
+## Usage
+Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
 
-Supported values for `LLM_PROVIDER`:
-- `openai`
-- `openrouter`
-- `anthropic`
-- `compatible` (local proxy or OpenAI-compatible API)
-- `auto` (default; chooses based on available keys)
+## Support
+Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
 
-Examples:
+## Roadmap
+If you have ideas for releases in the future, it is a good idea to list them in the README.
 
-### OpenAI
+## Contributing
+State if you are open to contributions and what your requirements are for accepting them.
 
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=...
-MODEL_NAME=gpt-4o-mini
-OPENAI_BASE_URL=https://api.openai.com/v1
-```
+For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
 
-### OpenRouter
+You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
 
-```env
-LLM_PROVIDER=openrouter
-OPENROUTER_API_KEY=...
-MODEL_NAME=openai/gpt-4o-mini
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-OPENROUTER_HTTP_REFERER=https://your-app.example
-OPENROUTER_X_TITLE=Yolo Assistant
-```
+## Authors and acknowledgment
+Show your appreciation to those who have contributed to the project.
 
-### Anthropic
+## License
+For open source projects, say how it is licensed.
 
-```env
-LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=...
-MODEL_NAME=claude-3-5-sonnet-20241022
-```
-
-### Local/OpenAI-Compatible Proxy
-
-```env
-LLM_PROVIDER=compatible
-LLM_API_KEY=not-required-or-your-key
-LLM_BASE_URL=http://localhost:4141/v1
-MODEL_NAME=your-local-model-name
-```
-
-## Telegram + Discord Configuration
-
-```env
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_ALLOWED_USER_IDS=123456789
-
-DISCORD_BOT_TOKEN=...
-DISCORD_ALLOWED_USER_IDS=123456789012345678
-```
-
-## Telegram Webhook Mode (Optional)
-
-Default is polling. For production, webhook mode is recommended behind a reverse proxy.
-
-```env
-TELEGRAM_USE_WEBHOOK=true
-TELEGRAM_WEBHOOK_URL=https://your-domain.example
-TELEGRAM_WEBHOOK_PATH=telegram
-TELEGRAM_WEBHOOK_PORT=8080
-TELEGRAM_WEBHOOK_LISTEN=0.0.0.0
-TELEGRAM_WEBHOOK_SECRET_TOKEN=your-random-secret
-```
-
-When webhook mode is enabled, `bot.py` will call `run_webhook`.
-
-## Health Endpoint
-
-When running `server.py`, a lightweight health endpoint is started by default.
-
-```env
-ENABLE_HEALTH_SERVER=true
-HEALTH_SERVER_HOST=0.0.0.0
-HEALTH_SERVER_PORT=8787
-```
-
-Endpoints:
-- `/health`
-- `/status`
-- `/metrics`
-
-Example:
-
-```bash
-curl http://127.0.0.1:8787/health
-```
-
-The payload includes active cron counts, running background tasks, pending notifications, and the latest audit log entry.
-
-## Scheduling / Automation
-
-You can schedule tasks with tools:
-- `schedule_task(task_description, interval_minutes)`
-- `schedule_daily_task(task_description)`
-- `get_scheduled_tasks()`
-- `cancel_scheduled_task(cron_id)`
-
-Example prompt:
-- "Schedule a daily task to send me a morning market summary"
-
-## Persistent Learning Features
-
-- Long-term memory: `memory_add`, `memory_list`, `memory_wipe`
-- Experience capture: `learn_experience`, `list_experiences`
-- Identity profile: `read_user_identity`, `update_user_identity`
-- Skill creation/evolution: `develop_new_skill`, `optimize_skill`, `list_skills`, `read_skill`
-
-## Cloud Deployment (Low-Cost VPS)
-
-Recommended: 1 vCPU / 1-2 GB RAM Ubuntu VM.
-
-Install and run with systemd:
-
-1) Put project at `/opt/yolo`
-2) Create `/etc/systemd/system/yolo.service`:
-
-```ini
-[Unit]
-Description=Yolo Personal AI Assistant
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/opt/yolo
-Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/yolo/.venv/bin/python server.py --mode all
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-3) Enable service:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable yolo
-sudo systemctl start yolo
-sudo systemctl status yolo
-```
-
-Health service (optional separate unit):
-
-```ini
-[Unit]
-Description=Yolo Health Server
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/opt/yolo
-Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/yolo/.venv/bin/python health_server.py --host 0.0.0.0 --port 8787
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-## Notes
-
-- Uploads from Telegram are stored in `artifacts/uploads`.
-- Photos can be OCR-processed and audio/voice can be transcribed when media AI pipeline is enabled.
-- Use `/mode yolo` in Telegram for autonomous execution, or safe mode for confirmations.
-- Browser tools use Camoufox. Optional tuning envs:
-  - `CAMOUFOX_HEADLESS=true` (or `virtual` on Linux)
-  - `CAMOUFOX_HUMANIZE=true`
-  - `CAMOUFOX_BLOCK_IMAGES=false`
-  - `CAMOUFOX_OS=windows,macos,linux`
+## Project status
+If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
