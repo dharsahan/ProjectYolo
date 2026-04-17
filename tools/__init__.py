@@ -1,5 +1,6 @@
 from tools.artifact_ops import create_artifact, get_latest_artifact, list_artifacts
-from tools.background_ops import run_background_mission
+from tools.background_ops import (dispatch_parallel_agents,
+                                  run_background_mission)
 from tools.browser_ops import (browser_click, browser_click_at, browser_close,
                                 browser_crawl_step,
                                 browser_click_next,
@@ -19,7 +20,7 @@ from tools.file_ops import (copy_file, delete_file, edit_file, file_info,
                             search_in_file, send_to_telegram, write_file)
 from tools.identity_ops import read_user_identity, update_user_identity
 from tools.mcp_ops import mcp_list_tools, mcp_run_tool
-from tools.memory_ops import memory_add, memory_list, memory_wipe
+from tools.memory_ops import memory_add, memory_delete, memory_list, memory_wipe
 from tools.mission_ops import create_mission, read_mission, update_mission
 from tools.research_ops import (research_clear, research_get_all_summaries,
                                 research_enqueue_from_crawl_step,
@@ -28,6 +29,8 @@ from tools.research_ops import (research_clear, research_get_all_summaries,
 from tools.skill_ops import develop_new_skill, list_skills, read_skill
 from tools.system_ops import run_bash
 from tools.web_ops import browse_url, web_search
+from tools.gui_ops import (gui_mouse_move, gui_mouse_click, gui_type_text, 
+                           gui_press_key, gui_screenshot, gui_get_screen_size)
 
 __all__ = [
     "TOOLS_SCHEMAS",
@@ -77,11 +80,13 @@ __all__ = [
     "memory_list",
     "memory_wipe",
     "memory_add",
+    "memory_delete",
     "mcp_list_tools",
     "mcp_run_tool",
     "learn_experience",
     "list_experiences",
     "run_background_mission",
+    "dispatch_parallel_agents",
     "schedule_task",
     "schedule_daily_task",
     "get_scheduled_tasks",
@@ -91,6 +96,12 @@ __all__ = [
     "self_upgrade_summary",
     "read_user_identity",
     "update_user_identity",
+    "gui_mouse_move",
+    "gui_mouse_click",
+    "gui_type_text",
+    "gui_press_key",
+    "gui_screenshot",
+    "gui_get_screen_size",
 ]
 
 # Define all schemas in one place for the agent
@@ -225,6 +236,24 @@ TOOLS_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "dispatch_parallel_agents",
+            "description": "Spawn multiple specialized agents in parallel to handle distinct sub-tasks and wait for their combined results. Use this for complex multi-faceted research or batch processing.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "objectives": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "A list of specific instructions for each agent."
+                    }
+                },
+                "required": ["objectives"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_background_mission",
             "description": "Execute a highly complex task in the background.",
             "parameters": {
@@ -297,6 +326,23 @@ TOOLS_SCHEMAS = [
                 "type": "object",
                 "properties": {"fact": {"type": "string"}},
                 "required": ["fact"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_delete",
+            "description": "Delete a single specific memory by its unique ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_id": {
+                        "type": "string",
+                        "description": "The unique UUID of the memory to delete."
+                    }
+                },
+                "required": ["memory_id"]
             }
         }
     },
@@ -830,6 +876,14 @@ TOOLS_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "compact_conversation",
+            "description": "Summarize the current conversation history to save context space while preserving key technical details and mission progress.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_in_file",
             "description": "Search regex in file.",
             "parameters": {
@@ -839,6 +893,89 @@ TOOLS_SCHEMAS = [
                     "pattern": {"type": "string"}
                 },
                 "required": ["path", "pattern"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gui_mouse_move",
+            "description": "Move the mouse cursor to a specific (x, y) coordinate. Use carefully on GUI interfaces.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer"},
+                    "y": {"type": "integer"},
+                    "duration": {"type": "number", "description": "Duration of the movement in seconds"}
+                },
+                "required": ["x", "y"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gui_mouse_click",
+            "description": "Click a mouse button.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "button": {"type": "string", "enum": ["left", "right", "middle"]},
+                    "clicks": {"type": "integer", "description": "Number of clicks"}
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gui_type_text",
+            "description": "Type a string of characters using the keyboard.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "interval": {"type": "number", "description": "Seconds between each key press"}
+                },
+                "required": ["text"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gui_press_key",
+            "description": "Press a single key or a hotkey combination (e.g., 'enter', 'ctrl+c').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"}
+                },
+                "required": ["key"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gui_screenshot",
+            "description": "Take a screenshot and save it to the specified path.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "save_path": {"type": "string"}
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gui_get_screen_size",
+            "description": "Get the screen resolution.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
             }
         }
     }

@@ -29,6 +29,59 @@ router = LLMRouter(llm_config)
 _REPO_HAS_TESTS_CACHE: Optional[bool] = None
 AUTO_FACTS_START = "[AUTO_BASIC_FACTS]"
 AUTO_FACTS_END = "[/AUTO_BASIC_FACTS]"
+AUTO_COMPACT_THRESHOLD = int(os.getenv("AUTO_COMPACT_THRESHOLD", "40"))
+
+
+async def _compact_history(session: Session, router: LLMRouter) -> None:
+    if len(session.message_history) <= 10:
+        return
+
+    log_agent(session.user_id, "COMPACT", f"Compacting history ({len(session.message_history)} messages)...", Fore.YELLOW)
+    
+    # Identify system prompt
+    system_prompt = None
+    if session.message_history and session.message_history[0].get("role") == "system":
+        system_prompt = session.message_history[0]
+    
+    # Keep last N messages to maintain immediate context
+    keep_last = 6
+    if system_prompt:
+        to_summarize = session.message_history[1:-keep_last]
+    else:
+        to_summarize = session.message_history[:-keep_last]
+    
+    last_messages = session.message_history[-keep_last:]
+
+    if not to_summarize:
+        return
+
+    summary_request = (
+        "Summarize the following technical conversation history concisely. "
+        "Preserve all specific mission objectives, file paths, tool results, "
+        "and established project preferences. Use Markdown bullet points."
+    )
+    
+    try:
+        resp = await router.chat_completions(
+            messages=[
+                {"role": "system", "content": "You are a senior engineer summarizing a project's state."},
+                {"role": "user", "content": f"{summary_request}\n\nCONVERSATION HISTORY:\n{json.dumps(to_summarize)}"}
+            ],
+            tools=[],
+        )
+        summary = resp.choices[0].message.content
+        
+        new_history = []
+        if system_prompt:
+            new_history.append(system_prompt)
+        
+        new_history.append({"role": "system", "content": f"[CONVERSATION_SUMMARY]\n{summary}"})
+        new_history.extend(last_messages)
+        
+        session.message_history = new_history
+        log_agent(session.user_id, "COMPACT", "History successfully compacted.", Fore.GREEN)
+    except Exception as e:
+        log_agent(session.user_id, "ERROR", f"Failed to compact history: {e}", Fore.RED)
 
 
 SELF_UPGRADE_SYSTEM_DIRECTIVE = (
@@ -534,12 +587,23 @@ async def execute_tool_direct(func_name: str, func_args: dict, user_id: int, sig
         "memory_list": lambda **kw: tools.memory_list(user_id=user_id, **kw),
         "memory_wipe": lambda **kw: tools.memory_wipe(user_id=user_id, **kw),
         "memory_add": lambda **kw: tools.memory_add(user_id=user_id, **kw),
+        "memory_delete": lambda **kw: tools.memory_delete(**kw),
         "mcp_list_tools": lambda **kw: tools.mcp_list_tools(**kw),
         "mcp_run_tool": lambda **kw: tools.mcp_run_tool(**kw),
         "run_background_mission": lambda **kw: tools.run_background_mission(
             user_id=user_id,
             mission_coro=lambda tid: run_agent_turn(
                 kw.get("objective"),
+                Session(user_id=session.user_id, message_history=get_background_initial_messages(), yolo_mode=True),
+                signal_handler=signal_handler,
+                memory_service=None,
+            ),
+            **kw,
+        ),
+        "dispatch_parallel_agents": lambda **kw: tools.dispatch_parallel_agents(
+            user_id=user_id,
+            mission_coro=lambda obj: run_agent_turn(
+                obj,
                 Session(user_id=session.user_id, message_history=get_background_initial_messages(), yolo_mode=True),
                 signal_handler=signal_handler,
                 memory_service=None,
@@ -555,8 +619,16 @@ async def execute_tool_direct(func_name: str, func_args: dict, user_id: int, sig
         "create_artifact": lambda **kw: tools.create_artifact(**kw),
         "list_artifacts": lambda **kw: tools.list_artifacts(**kw),
         "get_latest_artifact": lambda **kw: tools.get_latest_artifact(**kw),
+        "compact_conversation": lambda **kw: _compact_history(session, router),
+        "gui_mouse_move": lambda **kw: tools.gui_mouse_move(**kw),
+        "gui_mouse_click": lambda **kw: tools.gui_mouse_click(**kw),
+        "gui_type_text": lambda **kw: tools.gui_type_text(**kw),
+        "gui_press_key": lambda **kw: tools.gui_press_key(**kw),
+        "gui_screenshot": lambda **kw: tools.gui_screenshot(**kw),
+        "gui_get_screen_size": lambda **kw: tools.gui_get_screen_size(**kw),
     }
     if func_name in tool_map:
+
         import inspect
         res = tool_map[func_name](**func_args)
         if inspect.iscoroutine(res): res = await res
@@ -663,8 +735,18 @@ async def run_agent_turn(user_msg: Optional[str], session: Session, signal_handl
             unanswered = [tc for tc in assistant_msg["tool_calls"] if tc["id"] not in answered]
 
             if unanswered:
-                log_agent(session.user_id, "RESUME", f"Completing turn with {len(unanswered)} responses...", Fore.YELLOW)
-                hitl_to_raise = None
+                log_agent(session.user_id, "RESUME", f"Completing turn with {len(unanswered)} tool calls...", Fore.YELLOW)
+                
+                if signal_handler:
+                    tool_names_str = ", ".join(set(tc["function"]["name"] for tc in unanswered))
+                    await signal_handler(f"__STATUS__: Executing tools: {tool_names_str}")
+
+                # Prepare tasks for parallel execution
+                tasks = []
+                # Clear previous pending list if we're starting a fresh turn
+                # (but technically they should have been resolved already)
+                session.pending_confirmations = []
+                
                 for tool_call in unanswered:
                     func_name = tool_call["function"]["name"]
                     tc_id = tool_call["id"]
@@ -672,10 +754,12 @@ async def run_agent_turn(user_msg: Optional[str], session: Session, signal_handl
                         args = json.loads(tool_call["function"].get("arguments", "{}"))
                     except Exception:
                         args = {}
+                    
                     if not isinstance(args, dict):
                         args = {}
 
-                    if func_name == "run_background_mission" and session is not None:
+                    # Check for nested background missions
+                    if func_name == "run_background_mission":
                         system_prompt = ""
                         if session.message_history and session.message_history[0].get("role") == "system":
                             system_prompt = session.message_history[0].get("content", "")
@@ -684,25 +768,47 @@ async def run_agent_turn(user_msg: Optional[str], session: Session, signal_handl
                             session.message_history.append({"role": "tool", "tool_call_id": tc_id, "name": func_name, "content": res})
                             continue
 
+                    # HITL Check
                     out_of_scope = _is_out_of_scope(args)
                     if (_is_destructive_or_sensitive_tool(func_name) or out_of_scope) and not session.yolo_mode:
                         pending_path = _extract_tool_path(args)
                         # PROXY COMPLIANCE: Answer the call with a placeholder so the turn is technically "complete"
                         session.message_history.append({"role": "tool", "tool_call_id": tc_id, "name": func_name, "content": "[HITL_PENDING]"})
-                        if not hitl_to_raise:
-                            hitl_to_raise = PendingConfirmationError(func_name, pending_path, tc_id, args)
+                        session.pending_confirmations.append({
+                            "action": func_name,
+                            "path": pending_path,
+                            "args": args,
+                            "tool_call_id": tc_id
+                        })
                         continue
 
-                    # Normal execution
-                    res = await execute_tool_direct(func_name, args, session.user_id, signal_handler, session=session)
-                    session.message_history.append({"role": "tool", "tool_call_id": tc_id, "name": func_name, "content": res})
+                    # Define the task to be executed
+                    async def run_and_store(name=func_name, arguments=args, call_id=tc_id):
+                        result = await execute_tool_direct(name, arguments, session.user_id, signal_handler, session=session)
+                        return {"role": "tool", "tool_call_id": call_id, "name": name, "content": result}
+
+                    tasks.append(run_and_store())
+
+                if tasks:
+                    # Execute all non-HITL tasks in parallel
+                    results = await asyncio.gather(*tasks)
+                    session.message_history.extend(results)
                 
-                if hitl_to_raise:
-                    session.pending_confirmation = {"action": hitl_to_raise.action, "args": hitl_to_raise.tool_args, "tool_call_id": hitl_to_raise.tool_call_id}
-                    raise hitl_to_raise
+                if session.pending_confirmations:
+                    if signal_handler: await signal_handler("__STATUS__: ") # Clear status
+                    # Just raise the first one for backwards compat with PendingConfirmationError
+                    # but the session now contains ALL of them.
+                    first = session.pending_confirmations[0]
+                    raise PendingConfirmationError(first["action"], first["path"], first["tool_call_id"], first["args"])
+                
                 continue
 
+        # Auto-compact history if it exceeds threshold
+        if len(session.message_history) > AUTO_COMPACT_THRESHOLD:
+            await _compact_history(session, router)
+
         log_agent(session.user_id, "THINKING", "Consulting LLM...", Fore.MAGENTA)
+        if signal_handler: await signal_handler("__STATUS__: Consulting AI model...")
         
         session.message_history = sanitize_history(session.message_history)
         
@@ -758,4 +864,6 @@ async def run_agent_turn(user_msg: Optional[str], session: Session, signal_handl
             if memory_service and user_msg:
                 try: memory_service.add([{"role":"user","content":user_msg}, {"role":"assistant","content":msg.content}], user_id=str(session.user_id))
                 except Exception: pass
+            
+            if signal_handler: await signal_handler("__STATUS__: ") # Clear status
             return msg.content or "Task completed."

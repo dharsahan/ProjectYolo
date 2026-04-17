@@ -1,0 +1,9 @@
+.venv
+.yolo_mission
+.env
+.yolo_research_state
+node_modules
+test_agents
+.python-version
+agent_log.txt
+

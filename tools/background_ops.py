@@ -29,3 +29,32 @@ async def run_background_mission(user_id: int, objective: str, mission_coro: Cal
     asyncio.create_task(worker())
     
     return f"Mission started in the background. Task ID: `{task_id}`. I will notify you when it's done."
+
+async def dispatch_parallel_agents(user_id: int, objectives: list[str], mission_coro: Callable) -> str:
+    """Run multiple agents in parallel for different objectives and wait for all results."""
+    if not objectives:
+        return "No objectives provided."
+
+    logger.info(f"Dispatching {len(objectives)} parallel agents for user {user_id}")
+    
+    tasks = []
+    for i, objective in enumerate(objectives):
+        # We reuse the mission_coro but we need to give it a task_id if it expects one
+        # but here we just want the result string directly.
+        tasks.append(mission_coro(objective))
+    
+    try:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        output = [f"### Results for {len(objectives)} Parallel Agents:"]
+        for i, (objective, result) in enumerate(zip(objectives, results)):
+            if isinstance(result, Exception):
+                res_str = f"Error: {str(result)}"
+            else:
+                res_str = str(result)
+            output.append(f"\n#### Agent {i+1}: {objective}\n{res_str}")
+        
+        return "\n".join(output)
+    except Exception as e:
+        logger.error(f"Failed to dispatch parallel agents: {e}")
+        return f"Error dispatching parallel agents: {e}"

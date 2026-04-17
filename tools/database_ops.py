@@ -134,10 +134,10 @@ def save_session(
     yolo_mode: bool,
     think_mode: bool = False,
     think_mode_policy: str = "auto",
-    pending_confirmation: dict | None = None,
+    pending_confirmations: list | None = None,
 ):
-    pending_confirmation_json = (
-        json.dumps(pending_confirmation) if pending_confirmation is not None else None
+    pending_confirmations_json = (
+        json.dumps(pending_confirmations) if pending_confirmations is not None else None
     )
 
     with _connect() as conn:
@@ -158,7 +158,7 @@ def save_session(
             yolo_mode,
             think_mode,
             think_mode_policy,
-            pending_confirmation_json,
+            pending_confirmations_json,
         ))
         conn.commit()
 
@@ -176,18 +176,18 @@ def load_session(user_id: int):
             except json.JSONDecodeError:
                 history = []
 
-            pending_confirmation = None
+            pending_confirmations = []
             if row[4]:
                 try:
-                    pending_confirmation = json.loads(row[4])
+                    pending_confirmations = json.loads(row[4])
                 except json.JSONDecodeError:
-                    pending_confirmation = None
+                    pending_confirmations = []
 
             raw_policy = str(row[3] or "").strip().lower()
             if raw_policy not in {"auto", "force_on", "force_off"}:
                 raw_policy = "force_on" if bool(row[2]) else "auto"
 
-            return history, bool(row[1]), bool(row[2]), raw_policy, pending_confirmation
+            return history, bool(row[1]), bool(row[2]), raw_policy, pending_confirmations
         return None, None, None, None, None
 
 def add_background_task(task_id: str, user_id: int, objective: str):

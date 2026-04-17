@@ -14,13 +14,15 @@ def memory_list(user_id: int) -> str:
             return "No memories found for your profile."
             
         output = "### Your Long-Term Memories:\n\n"
-        for i, m in enumerate(results, 1):
-            # Extremely resilient text extraction
+        for m in results:
+            # Extremely resilient extraction
             if isinstance(m, dict):
                 text = m.get('memory') or m.get('text') or str(m)
+                mem_id = m.get('id') or m.get('memory_id') or "unknown"
             else:
                 text = str(m)
-            output += f"{i}. {text}\n"
+                mem_id = "unknown"
+            output += f"- `{mem_id}`: {text}\n"
             
         audit_log("memory_list", {"user_id": user_id}, "success")
         return output
@@ -38,6 +40,18 @@ def memory_add(user_id: int, fact: str) -> str:
     except Exception as e:
         audit_log("memory_add", {"user_id": user_id, "fact": fact}, "error", str(e))
         return f"Error adding memory: {e}"
+
+def memory_delete(memory_id: str) -> str:
+    """Delete a single memory by its unique ID."""
+    try:
+        memory = get_memory()
+        # OSS version uses memory_id as a positional or keyword argument
+        memory.delete(memory_id=memory_id)
+        audit_log("memory_delete", {"memory_id": memory_id}, "success")
+        return f"Memory `{memory_id}` has been deleted."
+    except Exception as e:
+        audit_log("memory_delete", {"memory_id": memory_id}, "error", str(e))
+        return f"Error deleting memory `{memory_id}`: {e}"
 
 def memory_wipe(user_id: int) -> str:
     """Permanently delete all memories using shared instance."""

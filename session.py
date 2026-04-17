@@ -9,7 +9,7 @@ from tools.database_ops import init_db, load_session, save_session
 class Session:
     user_id: int
     message_history: List[Dict[str, Any]] = field(default_factory=list)
-    pending_confirmation: Optional[Dict[str, Any]] = None
+    pending_confirmations: List[Dict[str, Any]] = field(default_factory=list)
     yolo_mode: bool = False
     think_mode: bool = False
     think_mode_policy: str = "auto"
@@ -37,12 +37,12 @@ class SessionManager:
     def get_or_create(self, user_id: int) -> Session:
         if user_id not in self.sessions:
             # Try to load from DB first
-            history, yolo_mode, think_mode, think_mode_policy, pending_confirmation = load_session(user_id)
+            history, yolo_mode, think_mode, think_mode_policy, pending_confirmations = load_session(user_id)
             if history is not None:
                 self.sessions[user_id] = Session(
                     user_id=user_id,
                     message_history=history,
-                    pending_confirmation=pending_confirmation,
+                    pending_confirmations=pending_confirmations or [],
                     yolo_mode=yolo_mode,
                     think_mode=think_mode,
                     think_mode_policy=think_mode_policy or "auto",
@@ -64,7 +64,7 @@ class SessionManager:
                 session.yolo_mode,
                 session.think_mode,
                 session.think_mode_policy,
-                session.pending_confirmation,
+                session.pending_confirmations,
             )
 
     def clear(self, user_id: int):

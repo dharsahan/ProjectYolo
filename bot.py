@@ -105,7 +105,11 @@ def escape_markdown(text: str) -> str:
 
 
 def build_telegram_signal_handler(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    status_msg_id: Optional[int] = None
+
     async def telegram_signal_handler(signal_str: str) -> Optional[str]:
+        nonlocal status_msg_id
+        
         if signal_str.startswith("__SEND_FILE__:"):
             file_path = signal_str.replace("__SEND_FILE__:", "")
             try:
@@ -114,6 +118,41 @@ def build_telegram_signal_handler(context: ContextTypes.DEFAULT_TYPE, chat_id: i
                 return f"File `{os.path.basename(file_path)}` uploaded successfully."
             except Exception as e:
                 return f"Failed to upload file: {e}"
+        
+        if signal_str.startswith("__STATUS__:"):
+            status_text = signal_str.replace("__STATUS__:", "").strip()
+            if not status_text:
+                if status_msg_id:
+                    try:
+                        await context.bot.delete_message(chat_id=chat_id, message_id=status_msg_id)
+                    except Exception: pass
+                    status_msg_id = None
+                return None
+
+            text = f"⏳ *Agent Status*\n_{escape_markdown(status_text)}_"
+            try:
+                if status_msg_id:
+                    await context.bot.edit_message_text(
+                        chat_id=chat_id, message_id=status_msg_id, 
+                        text=text, parse_mode=ParseMode.MARKDOWN_V2
+                    )
+                else:
+                    msg = await context.bot.send_message(
+                        chat_id=chat_id, text=text, 
+                        parse_mode=ParseMode.MARKDOWN_V2
+                    )
+                    status_msg_id = msg.message_id
+            except Exception:
+                # Fallback if edit fails (e.g. content same)
+                try:
+                    msg = await context.bot.send_message(
+                        chat_id=chat_id, text=text, 
+                        parse_mode=ParseMode.MARKDOWN_V2
+                    )
+                    status_msg_id = msg.message_id
+                except Exception: pass
+            return None
+
         return None
 
     return telegram_signal_handler
@@ -490,21 +529,22 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = session_manager.get_or_create(user_id)
     log_bot(user_id, "IN", "/cancel", Fore.CYAN)
 
-    if session.pending_confirmation:
-        tool_name = session.pending_confirmation["action"]
-        session.message_history.append(
-            {
-                "role": "tool",
-                "tool_call_id": session.pending_confirmation["tool_call_id"],
-                "name": tool_name,
-                "content": "Action denied by user.",
-            }
-        )
-        session.pending_confirmation = None
+    if session.pending_confirmations:
+        for p in session.pending_confirmations:
+            session.message_history.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": p["tool_call_id"],
+                    "name": p["action"],
+                    "content": "Action denied by user.",
+                }
+            )
+        count = len(session.pending_confirmations)
+        session.pending_confirmations = []
         session_manager.save(user_id)
-        await update.message.reply_text("Pending action cancelled\\.")
+        await update.message.reply_text(f"{count} pending actions cancelled\\.", parse_mode=ParseMode.MARKDOWN_V2)
     else:
-        await update.message.reply_text("No pending action\\.")
+        await update.message.reply_text("No pending actions\\.")
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -515,7 +555,9 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_bot(user_id, "IN", "/status", Fore.CYAN)
 
     history_len = len(session.message_history)
-    has_pending = "Yes" if session.pending_confirmation else "No"
+    compact_threshold = agent.AUTO_COMPACT_THRESHOLD
+    pending_count = len(session.pending_confirmations)
+    has_pending = f"Yes ({pending_count})" if pending_count > 0 else "No"
     current_mode = (
         "⚡ *YOLO* \\(Full Access\\)" if session.yolo_mode else "🛡️ *Safe* \\(HITL\\)"
     )
@@ -528,8 +570,8 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Mode: {current_mode}\n"
         f"• Think mode: {think_state}\n"
         f"• Think policy: `{think_policy}`\n"
-        f"• Messages in history: `{history_len}`\n"
-        f"• Confirmation pending: *{has_pending}*\n"
+        f"• History: `{history_len}/{compact_threshold}` messages\n"
+        f"• Confirmations pending: *{has_pending}*\n"
         f"• Sandbox: `{sandbox_path}`"
     )
     await update.message.reply_text(status_text, parse_mode=ParseMode.MARKDOWN_V2)
@@ -621,6 +663,19 @@ async def think_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Unknown option\\. Use `/think on`, `/think off`, or `/think auto`\\.",
         parse_mode=ParseMode.MARKDOWN_V2,
     )
+
+
+async def compact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await auth_check(update):
+        return
+    user_id = update.effective_user.id
+    session = session_manager.get_or_create(user_id)
+    log_bot(user_id, "CMD", "/compact")
+
+    async with session_manager.get_lock(user_id):
+        await agent._compact_history(session, agent.router)
+        session_manager.save(user_id)
+        await update.message.reply_text("Conversation history compacted. Check `/status`.")
 
 
 async def tools_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -766,16 +821,20 @@ async def process_agent_turn(
             )
             await send_long_message(chat_id, response, context)
             session_manager.save(user_id)
-        except agent.PendingConfirmationError as e:
-            keyboard = [[InlineKeyboardButton("✅ Yes", callback_data="confirm"),
-                         InlineKeyboardButton("❌ No", callback_data="deny")]]
+        except agent.PendingConfirmationError:
+            # We have one or more pending confirmations in session.pending_confirmations
+            count = len(session.pending_confirmations)
+            keyboard = [[
+                InlineKeyboardButton("✅ Confirm All", callback_data="confirm_all"),
+                InlineKeyboardButton("❌ Deny All", callback_data="deny_all")
+            ]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            text = (
-                f"⚠️ *Confirmation Required*\n"
-                f"Action: `{escape_markdown(e.action)}`\n"
-                f"Target: `{escape_markdown(e.path)}`"
-            )
-            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
+            
+            lines = [f"⚠️ *{count} Actions Pending Confirmation*"]
+            for i, p in enumerate(session.pending_confirmations):
+                lines.append(f"{i+1}\\. `{escape_markdown(p['action'])}` on `{escape_markdown(p['path'])}`")
+            
+            await update.message.reply_text("\n".join(lines), reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
             session_manager.save(user_id)
         except Exception:
             logger.exception("Error in process_agent_turn")
@@ -785,10 +844,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await auth_check(update):
         return
     user_id = update.effective_user.id
-    # Check pending confirmation outside the lock to prevent hanging if they just spam messages
+    # Check pending confirmations outside the lock
     session = session_manager.get_or_create(user_id)
-    if session.pending_confirmation:
-        await update.message.reply_text("Pending confirmation required\\.", parse_mode=ParseMode.MARKDOWN_V2)
+    if session.pending_confirmations:
+        await update.message.reply_text(f"Pending confirmations required ({len(session.pending_confirmations)} tasks)\\.", parse_mode=ParseMode.MARKDOWN_V2)
         return
     await process_agent_turn(update, context, update.message.text)
 
@@ -802,88 +861,85 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     async with session_manager.get_lock(user_id):
         session = session_manager.get_or_create(user_id)
-        if not session.pending_confirmation:
+        if not session.pending_confirmations:
             return
+        
         telegram_signal_handler = build_telegram_signal_handler(context, update.effective_chat.id)
-
-        async def send_confirmation_prompt(err: agent.PendingConfirmationError):
-            keyboard = [[InlineKeyboardButton("✅ Yes", callback_data="confirm"),
-                         InlineKeyboardButton("❌ No", callback_data="deny")]]
+        
+        async def send_confirmation_prompt(count: int, confirmations: list):
+            keyboard = [[
+                InlineKeyboardButton("✅ Confirm All", callback_data="confirm_all"),
+                InlineKeyboardButton("❌ Deny All", callback_data="deny_all")
+            ]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            text = (
-                f"⚠️ *Confirmation Required*\n"
-                f"Action: `{escape_markdown(err.action)}`\n"
-                f"Target: `{escape_markdown(err.path)}`"
-            )
+            lines = [f"⚠️ *{count} Actions Pending Confirmation*"]
+            for i, p in enumerate(confirmations):
+                lines.append(f"{i+1}\\. `{escape_markdown(p['action'])}` on `{escape_markdown(p['path'])}`")
+            
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=text,
+                text="\n".join(lines),
                 reply_markup=reply_markup,
                 parse_mode=ParseMode.MARKDOWN_V2,
             )
 
-        pending = session.pending_confirmation
-        session.pending_confirmation = None
-        if query.data == "confirm":
-            await query.edit_message_text("✅ *Confirmed*", parse_mode=ParseMode.MARKDOWN_V2)
+        pending_list = list(session.pending_confirmations)
+        session.pending_confirmations = []
+        
+        if query.data == "confirm_all":
+            await query.edit_message_text("✅ *All Actions Confirmed*", parse_mode=ParseMode.MARKDOWN_V2)
             try:
-                result = await agent.execute_tool_direct(
-                    pending["action"],
-                    pending["args"],
-                    user_id,
-                    signal_handler=telegram_signal_handler,
-                    session=session,
-                )
+                # Execute all pending in parallel
+                execution_tasks = []
+                for p in pending_list:
+                    execution_tasks.append(agent.execute_tool_direct(
+                        p["action"], p["args"], user_id, 
+                        signal_handler=telegram_signal_handler, session=session
+                    ))
                 
-                # PROXY FIX: Replace the [HITL_PENDING] placeholder with the actual result
-                found = False
-                for msg in reversed(session.message_history):
-                    if msg.get("role") == "tool" and msg.get("tool_call_id") == pending["tool_call_id"]:
-                        msg["content"] = result
-                        found = True; break
+                results = await asyncio.gather(*execution_tasks)
                 
-                if not found:
-                    session.message_history.append({"role": "tool", "tool_call_id": pending["tool_call_id"], "name": pending["action"], "content": result})
+                # Update history for each
+                for p, result in zip(pending_list, results):
+                    found = False
+                    for msg in reversed(session.message_history):
+                        if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
+                            msg["content"] = result
+                            found = True; break
+                    if not found:
+                        session.message_history.append({"role": "tool", "tool_call_id": p["tool_call_id"], "name": p["action"], "content": result})
                 
-                # We are already inside the lock, so directly call run_agent_turn instead of process_agent_turn
-                # to avoid deadlock
                 response = await agent.run_agent_turn(
-                    None,
-                    session,
-                    signal_handler=telegram_signal_handler,
-                    memory_service=session_manager.memory,
+                    None, session, signal_handler=telegram_signal_handler, memory_service=session_manager.memory
                 )
                 await send_long_message(update.effective_chat.id, response, context)
                 session_manager.save(user_id)
-            except agent.PendingConfirmationError as e:
-                await send_confirmation_prompt(e)
+            except agent.PendingConfirmationError:
+                await send_confirmation_prompt(len(session.pending_confirmations), session.pending_confirmations)
                 session_manager.save(user_id)
             except Exception:
-                logger.exception("Error in confirmed callback flow")
-                await context.bot.send_message(update.effective_chat.id, "Tool failed\\.")
+                logger.exception("Error in confirm_all callback flow")
+                await context.bot.send_message(update.effective_chat.id, "One or more tools failed\\.")
                 session_manager.save(user_id)
         else:
-            await query.edit_message_text("❌ Cancelled")
-            # Replace placeholder with denial
-            for msg in reversed(session.message_history):
-                if msg.get("role") == "tool" and msg.get("tool_call_id") == pending["tool_call_id"]:
-                    msg["content"] = "Action denied by user."; break
+            await query.edit_message_text("❌ *All Actions Cancelled*", parse_mode=ParseMode.MARKDOWN_V2)
+            for p in pending_list:
+                for msg in reversed(session.message_history):
+                    if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
+                        msg["content"] = "Action denied by user."; break
 
             try:
                 response = await agent.run_agent_turn(
-                    None,
-                    session,
-                    signal_handler=telegram_signal_handler,
-                    memory_service=session_manager.memory,
+                    None, session, signal_handler=telegram_signal_handler, memory_service=session_manager.memory
                 )
                 await send_long_message(update.effective_chat.id, response, context)
                 session_manager.save(user_id)
-            except agent.PendingConfirmationError as e:
-                await send_confirmation_prompt(e)
+            except agent.PendingConfirmationError:
+                await send_confirmation_prompt(len(session.pending_confirmations), session.pending_confirmations)
                 session_manager.save(user_id)
             except Exception:
-                logger.exception("Error in denied callback flow")
-                await context.bot.send_message(update.effective_chat.id, "Tool failed\\.")
+                logger.exception("Error in deny_all callback flow")
+                await context.bot.send_message(update.effective_chat.id, "Turn failed after denial\\.")
                 session_manager.save(user_id)
 
 
@@ -975,7 +1031,7 @@ async def post_init(application: Application) -> None:
     asyncio.create_task(cron_worker())
     await application.bot.set_my_commands([
         BotCommand("start", "Start"), BotCommand("help", "Help"), BotCommand("mode", "Safe/Yolo"),
-        BotCommand("think", "Think Mode"),
+        BotCommand("think", "Think Mode"), BotCommand("compact", "Compact History"),
         BotCommand("tools", "Tools"), BotCommand("experiences", "Technical Lessons"),
         BotCommand("schedules", "Recurring Tasks"), BotCommand("memories", "Memory"), BotCommand("facts", "Auto Facts"),
         BotCommand("forget", "Forget"), BotCommand("get", "Get File"),
@@ -996,6 +1052,7 @@ def main():
     application.add_error_handler(error_handler)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("compact", compact_command))
     application.add_handler(CommandHandler("cancel", cancel))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("mode", mode_command))
