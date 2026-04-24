@@ -1,0 +1,85 @@
+<h2>Project Yolo Architecture Map</h2>
+<p class="subtitle">Autonomous AI Agent Orchestrator</p>
+
+<div class="mockup">
+  <div class="mockup-header">System Architecture Overview</div>
+  <div class="mockup-body">
+    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+      
+      <!-- Orchestration Layer -->
+      <div style="flex: 1; min-width: 250px; border: 1px solid #ccc; padding: 10px; border-radius: 8px;">
+        <h3>🧠 Core Orchestration</h3>
+        <ul style="list-style: none; padding: 0;">
+          <li><strong>agent.py</strong>: Execution Engine</li>
+          <li><strong>llm_router.py</strong>: Multi-Model Routing</li>
+          <li><strong>session.py</strong>: State & History Management</li>
+        </ul>
+      </div>
+
+      <!-- Interfaces Layer -->
+      <div style="flex: 1; min-width: 250px; border: 1px solid #ccc; padding: 10px; border-radius: 8px;">
+        <h3>🖥️ Gateways / Interfaces</h3>
+        <ul style="list-style: none; padding: 0;">
+          <li><strong>tui.py</strong>: Agentic IDE (Textual)</li>
+          <li><strong>cli.py</strong>: Standard CLI</li>
+          <li><strong>bot.py</strong>: Telegram Integration</li>
+          <li><strong>discord_gateway.py</strong>: Discord Bot</li>
+        </ul>
+      </div>
+
+      <!-- Tools Layer -->
+      <div style="flex: 2; min-width: 400px; border: 1px solid #ccc; padding: 10px; border-radius: 8px;">
+        <h3>🛠️ Tools System (tools/)</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <p><strong>🌐 Web & Research</strong></p>
+            <ul style="font-size: 0.9em;">
+              <li>research_ops.py</li>
+              <li>browser_ops.py</li>
+              <li>web_ops.py</li>
+            </ul>
+          </div>
+          <div>
+            <p><strong>💾 Memory & Persistence</strong></p>
+            <ul style="font-size: 0.9em;">
+              <li>memory_ops.py (mem0)</li>
+              <li>database_ops.py (SQLite)</li>
+            </ul>
+          </div>
+          <div>
+            <p><strong>🖱️ Control & System</strong></p>
+            <ul style="font-size: 0.9em;">
+              <li>gui_ops.py (Vision/Control)</li>
+              <li>system_ops.py (Bash)</li>
+              <li>git_ops.py</li>
+            </ul>
+          </div>
+          <div>
+            <p><strong>📂 Code & Evolution</strong></p>
+            <ul style="font-size: 0.9em;">
+              <li>codebase_ops.py</li>
+              <li>evolution_ops.py</li>
+              <li>skill_ops.py</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Native Core -->
+      <div style="flex: 1; min-width: 250px; border: 1px solid #ffcccc; padding: 10px; border-radius: 8px;">
+        <h3>🦀 Native Core</h3>
+        <p><strong>rust/yolo-core/</strong></p>
+        <p style="font-size: 0.8em; color: #666;">High-performance logic and low-level system hooks.</p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Current Active Mission</h3>
+  <div class="placeholder" style="background: #f0f7ff; border: 1px solid #007bff; padding: 15px;">
+    <strong>Objective:</strong> Expand AI agent memory research (50+ sites).<br>
+    <strong>Progress:</strong> Step 56/?? - Researching high-quality aggregators.
+  </div>
+</div>

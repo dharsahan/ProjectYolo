@@ -1,0 +1,172 @@
+Screen {
+    background: #0f172a;
+}
+
+#main-container {
+    height: 100%;
+    width: 100%;
+}
+
+#chat-panel {
+    width: 65%;
+    height: 100%;
+    border: solid #0ea5e9;
+    background: #1e293b;
+    padding: 1;
+}
+
+#work-panel {
+    width: 35%;
+    height: 100%;
+    border: solid #10b981;
+    background: #0f172a;
+    padding: 1;
+}
+
+#chat-title, #work-title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    background: #334155;
+    margin-bottom: 1;
+    color: #f8fafc;
+}
+
+#chat-content, #work-content {
+    width: 100%;
+    height: 1fr;
+}
+
+.message-role {
+    text-style: bold;
+    margin-top: 1;
+    margin-bottom: 0;
+    padding-left: 1;
+}
+
+.message-content {
+    padding: 1 2;
+    margin-bottom: 1;
+}
+
+/* User Message Styling */
+.role-user.message-role {
+    color: #10b981; /* Emerald */
+}
+.role-user.message-content {
+    border-left: thick #10b981;
+    background: #064e3b;
+    color: #ecfdf5;
+}
+
+/* Assistant Message Styling */
+.role-assistant.message-role {
+    color: #0ea5e9; /* Sky blue */
+}
+.role-assistant.message-content {
+    border-left: thick #0ea5e9;
+    background: #0c4a6e;
+    color: #e0f2fe;
+}
+
+/* System Message Styling */
+.role-system.message-role {
+    color: #f59e0b; /* Amber */
+}
+.role-system.message-content {
+    border-left: thick #f59e0b;
+    background: #451a03;
+    color: #fef3c7;
+    text-style: italic;
+}
+
+#message-list {
+    height: 1fr;
+}
+
+#message-container {
+    height: auto;
+}
+
+.work-subpanel {
+    background: #1e293b;
+    color: #f8fafc;
+    border: solid #334155;
+    margin: 1;
+    padding: 1;
+    height: auto;
+}
+
+#work-scroll {
+    height: 1fr;
+}
+
+LoadingIndicator {
+    height: 3;
+    margin: 1;
+}
+
+UserInput {
+    dock: bottom;
+    margin-top: 1;
+    border: solid #0ea5e9;
+    background: #0f172a;
+}
+
+UserInput:focus {
+    border: double #38bdf8;
+}
+
+#modal-container {
+    width: 60;
+    height: auto;
+    border: double #ef4444;
+    background: #1e293b;
+    padding: 1 2;
+    align: center middle;
+}
+
+#modal-title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    color: #ef4444;
+    margin-bottom: 1;
+}
+
+#modal-action, #modal-path {
+    width: 100%;
+    margin-bottom: 1;
+    color: #f8fafc;
+}
+
+#modal-buttons {
+    width: 100%;
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#log-widget {
+    background: #0f172a;
+    color: #94a3b8;
+    border: solid #334155;
+    margin: 1;
+    height: 1fr;
+}
+
+#log-title {
+    width: 100%;
+    background: #334155;
+    color: #f8fafc;
+    text-align: center;
+    text-style: bold;
+}
+
+#log-content {
+    padding: 1;
+}
+
+#log-scroll {
+    height: 1fr;
+}
