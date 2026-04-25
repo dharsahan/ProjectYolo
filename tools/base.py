@@ -107,11 +107,43 @@ def audit_log(tool: str, args: Dict[str, Any], status: str, detail: str = ""):
         pass
 
 
+def format_log_line(line: str) -> str:
+    """Prettify a JSON log line for display."""
+    try:
+        data = json.loads(line)
+        ts = data.get("timestamp", "")
+        if ts:
+            ts = ts.split("T")[-1][:8]  # Just the time HH:MM:SS
+        
+        tool = data.get("tool", "system")
+        status = data.get("status", "info")
+        detail = data.get("detail", "")
+        
+        color = "green" if status == "success" else "red" if status == "error" else "yellow"
+        
+        # Textual-compatible markup
+        return f"[[cyan]{ts}[/cyan]] [[b]{tool}[/b]] [{color}]{status}[/{color}] {detail}"
+    except Exception:
+        return line
+
+
 def get_mem0_config():
     """Returns the standardized configuration for Mem0."""
     api_key = os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     model = os.getenv("MODEL_NAME", "gpt-4o")
+    
+    # Adaptive Embedding Model for local setups
+    if "4141" in base_url:
+        embedding_model = os.getenv("EMBEDDING_MODEL_NAME", "text-embedding-ada-002")
+        embedding_dim = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
+    elif api_key == "dummy" or "localhost" in base_url or "127.0.0.1" in base_url:
+        embedding_model = os.getenv("EMBEDDING_MODEL_NAME", "all-minilm")
+        embedding_dim = int(os.getenv("EMBEDDING_DIMENSIONS", "384"))
+    else:
+        embedding_model = os.getenv("EMBEDDING_MODEL_NAME", "text-embedding-3-small")
+        embedding_dim = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
+
     memory_path = YOLO_HOME / "memory"
     memory_path.mkdir(exist_ok=True)
 
@@ -125,7 +157,8 @@ def get_mem0_config():
             "config": {
                 "api_key": api_key,
                 "openai_base_url": base_url,
-                "model": "text-embedding-3-small",
+                "model": embedding_model,
+                "embedding_dims": embedding_dim,
             },
         },
         "vector_store": {

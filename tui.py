@@ -13,25 +13,30 @@ from tools import database_ops
 
 class ConfirmationModal(ModalScreen):
     """A modal screen for tool confirmations."""
-    def __init__(self, action: str, path: str, tool_args: dict):
+    def __init__(self, confirmations: list):
         super().__init__()
-        self.action = action
-        self.path = path
-        self.tool_args = tool_args
+        self.confirmations = confirmations
 
     def compose(self) -> ComposeResult:
-        yield Grid(
-            Label("Confirmation Needed", id="modal-title"),
-            Label(f"Tool: {self.action}", id="modal-action"),
-            Label(f"Target: {self.path}", id="modal-path"),
-            Horizontal(
-                Button("Approve", variant="success", id="approve"),
-                Button("Background", variant="primary", id="background"),
-                Button("Deny", variant="error", id="deny"),
-                id="modal-buttons"
-            ),
-            id="modal-container"
-        )
+        count = len(self.confirmations)
+        title = "Confirmation Needed" if count == 1 else f"{count} Actions Need Confirmation"
+        
+        with Grid(id="modal-container"):
+            yield Label(title, id="modal-title")
+            
+            with Vertical(id="modal-actions-list"):
+                for i, p in enumerate(self.confirmations):
+                    yield Label(f"{i+1}. {p['action']} -> {p['path']}", classes="modal-action-item")
+            
+            with Horizontal(id="modal-buttons"):
+                if count == 1:
+                    yield Button("Approve", variant="success", id="approve")
+                    yield Button("Background", variant="primary", id="background")
+                    yield Button("Deny", variant="error", id="deny")
+                else:
+                    yield Button("Approve All", variant="success", id="approve_all")
+                    yield Button("Deny All", variant="error", id="deny_all")
+                    yield Button("Cancel", id="cancel")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id)
@@ -179,30 +184,115 @@ class AgenticIDE(App):
                         signal_handler=signal_handler
                     )
                     break
-                except agent.PendingConfirmationError as e:
-                    # Catch the error and push modal
-                    modal = ConfirmationModal(e.action, e.path, e.tool_args)
-                    result = await self.push_screen(modal)
+                except agent.PendingConfirmationError:
+                    # session.pending_confirmations now contains ALL of them.
+                    pending_list = list(self.session.pending_confirmations)
+                    modal = ConfirmationModal(pending_list)
+                    result = await self.push_screen(modal)  # type: ignore
                     
                     if result == "approve":
-                        # Execute tool
+                        # Handle single first one (legacy compat)
+                        p = pending_list[0]
+                        self.session.pending_confirmations = pending_list[1:]
                         tool_result = await agent.execute_tool_direct(
-                            e.action, 
-                            e.tool_args, 
+                            p["action"], 
+                            p["args"], 
                             self.session.user_id, 
                             signal_handler=signal_handler, 
                             session=self.session
                         )
-                        
-                        # Update history to replace [HITL_PENDING] with actual result
+                        found = False
                         for msg in reversed(self.session.message_history):
-                            if msg.get("role") == "tool" and msg.get("tool_call_id") == e.tool_call_id:
+                            if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
                                 msg["content"] = tool_result
+                                found = True
                                 break
-                        
+                        if not found:
+                            self.session.message_history.append({
+                                "role": "tool",
+                                "tool_call_id": p["tool_call_id"],
+                                "name": p["action"],
+                                "content": tool_result
+                            })
+                        self.session.history_dirty = True
                         is_resume = True
                         continue
+
+                    elif result == "approve_all":
+                        self.session.pending_confirmations = []
+                        execution_tasks = []
+                        for p in pending_list:
+                            execution_tasks.append(
+                                agent.execute_tool_direct(
+                                    p["action"],
+                                    p["args"],
+                                    self.session.user_id,
+                                    signal_handler=signal_handler,
+                                    session=self.session,
+                                )
+                            )
+                        results = await asyncio.gather(*execution_tasks)
+                        for p, tool_result in zip(pending_list, results):
+                            found = False
+                            for msg in reversed(self.session.message_history):
+                                if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
+                                    msg["content"] = tool_result
+                                    found = True
+                                    break
+                            if not found:
+                                self.session.message_history.append({
+                                    "role": "tool",
+                                    "tool_call_id": p["tool_call_id"],
+                                    "name": p["action"],
+                                    "content": tool_result
+                                })
+                        self.session.history_dirty = True
+                        is_resume = True
+                        continue
+
+                    elif result == "deny_all":
+                        self.session.pending_confirmations = []
+                        for p in pending_list:
+                            found = False
+                            for msg in reversed(self.session.message_history):
+                                if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
+                                    msg["content"] = "Action denied by user."
+                                    found = True
+                                    break
+                            if not found:
+                                self.session.message_history.append({
+                                    "role": "tool",
+                                    "tool_call_id": p["tool_call_id"],
+                                    "name": p["action"],
+                                    "content": "Action denied by user."
+                                })
+                        self.session.history_dirty = True
+                        is_resume = True
+                        continue
+
+                    elif result == "deny":
+                        # Handle single deny
+                        p = pending_list[0]
+                        self.session.pending_confirmations = pending_list[1:]
+                        found = False
+                        for msg in reversed(self.session.message_history):
+                            if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
+                                msg["content"] = "Action denied by user."
+                                found = True
+                                break
+                        if not found:
+                            self.session.message_history.append({
+                                "role": "tool",
+                                "tool_call_id": p["tool_call_id"],
+                                "name": p["action"],
+                                "content": "Action denied by user."
+                            })
+                        self.session.history_dirty = True
+                        is_resume = True
+                        continue
+
                     elif result == "background":
+                        # Background the whole mission
                         await agent.execute_tool_direct(
                             "run_background_mission",
                             {"objective": current_prompt},
@@ -211,7 +301,7 @@ class AgenticIDE(App):
                         )
                         break
                     else:
-                        # Deny
+                        # Deny or cancel
                         break
         finally:
             def reenable_input():

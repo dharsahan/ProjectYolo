@@ -26,11 +26,13 @@ def learn_experience(user_id: int, task: str, error: str, resolution: str) -> st
 
 
 def list_experiences(user_id: int) -> str:
-    """Retrieve all technical lessons and error resolutions learned so far."""
+    """Retrieve all technical engineering experiences/lessons learned."""
     try:
         memory = get_memory()
         # Search specifically for experience type
-        results = memory.get_all(user_id=str(user_id))
+        # mem0 v2.0.0 requires entity IDs in a filters dict
+        results = memory.get_all(filters={"user_id": str(user_id)})
+
 
         if isinstance(results, dict) and "results" in results:
             results = results["results"]

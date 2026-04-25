@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import json
 import os
@@ -184,6 +183,11 @@ async def _compact_history(session: Session, router: LLMRouter) -> None:
             ],
             tools=[],
         )
+        
+        if not getattr(resp, "choices", None) or not resp.choices:
+            log_agent(session.user_id, "ERROR", "Failed to compact history: empty choices returned by LLM.", Fore.RED)
+            return
+
         summary = resp.choices[0].message.content
 
         new_history = []
@@ -467,7 +471,8 @@ def _fetch_all_memories(memory_service: Any, user_id: int) -> Any:
     if not memory_service:
         return []
     try:
-        return memory_service.get_all(user_id=str(user_id))
+        # mem0 v2.0.0 requires entity IDs in a filters dict
+        return memory_service.get_all(filters={"user_id": str(user_id)})
     except Exception:
         return []
 
@@ -516,7 +521,10 @@ def _build_memory_context(
         return None
 
     try:
-        search_results = memory_service.search(user_msg, user_id=str(user_id), limit=8)
+        # mem0 v2.0.0 requires entity IDs in a filters dict
+        search_results = memory_service.search(
+            user_msg, filters={"user_id": str(user_id)}, limit=8
+        )
     except Exception:
         search_results = []
 
@@ -696,6 +704,10 @@ def log_agent(user_id: int, tag: str, message: str, color: str = Fore.CYAN):
         print(
             f"{Fore.WHITE}[{user_id}] [{ts}] {color}{Style.BRIGHT}{tag}{Style.NORMAL} {message}"
         )
+    
+    # Also log to audit file for TUI visibility
+    from tools.base import audit_log
+    audit_log("agent", {"user_id": user_id}, tag, message)
 
 
 LEGACY_BASE_SYSTEM_PROMPT = (
@@ -1431,7 +1443,7 @@ async def run_agent_turn(
                                 and k in target
                                 and isinstance(target[k], str)
                             ):
-                                if k in ["name", "arguments"]:
+                                if k in ["name", "arguments", "id"]:
                                     target[k] += v
                                 else:
                                     target[k] = v
@@ -1544,8 +1556,9 @@ async def run_agent_turn(
                         ],
                         user_id=str(session.user_id),
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    from tools.base import audit_log
+                    audit_log("auto_memory_add", {"user_id": session.user_id}, "error", str(e))
 
             if signal_handler:
                 await signal_handler("__STATUS__: ")  # Clear status

@@ -2,15 +2,23 @@ import argparse
 import asyncio
 import sys
 import os
+from typing import Optional
 
 try:
     import readline
 except ImportError:
     pass
 
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.live import Live
+from rich.text import Text
+
 import agent
 from session import SessionManager
 
+console = Console()
 
 async def watchdog_execute(coro, action_name):
     """Wait for a tool to complete, but periodically ask the user if they want to keep waiting."""
@@ -21,7 +29,7 @@ async def watchdog_execute(coro, action_name):
         try:
             return await asyncio.wait_for(asyncio.shield(task), timeout=interval)
         except asyncio.TimeoutError:
-            print(f"\nyolo> Tool '{action_name}' is still running after {interval}s...")
+            console.print(f"\n[bold yellow]yolo>[/bold yellow] Tool '{action_name}' is still running after {interval}s...")
             try:
                 decision = await asyncio.to_thread(input, "Keep waiting for completion? (y/N/b): ")
                 decision = decision.strip().lower()
@@ -38,12 +46,12 @@ async def watchdog_execute(coro, action_name):
                 return "Task cancelled by user."
 
 
-async def repl(user_id: int, initial_prompt: str = None) -> None:
+async def repl(user_id: int, initial_prompt: Optional[str] = None) -> None:
     session_manager = SessionManager(timeout_minutes=60)
     session = session_manager.get_or_create(user_id)
 
     if not initial_prompt:
-        print("Yolo CLI ready. Type `exit` to quit.")
+        console.print(Panel("[bold green]YOLO CLI Agentic IDE Ready[/bold green]\nType `exit` to quit.", expand=False))
     
     first_turn = True
     while True:
@@ -57,7 +65,7 @@ async def repl(user_id: int, initial_prompt: str = None) -> None:
                 text = await asyncio.to_thread(input, "you> ")
                 text = text.strip()
         except (EOFError, KeyboardInterrupt):
-            print("\nbye")
+            console.print("\n[bold red]bye[/bold red]")
             break
 
         if not text:
@@ -70,22 +78,40 @@ async def repl(user_id: int, initial_prompt: str = None) -> None:
         
         while True:
             try:
+                last_full_content = ""
+                
+                async def cli_signal_handler(msg: str):
+                    nonlocal last_full_content
+                    if msg.startswith(agent.TUIMessage.STREAM + ":"):
+                        content = msg[len(agent.TUIMessage.STREAM) + 1:]
+                        last_full_content = content
+                        # For CLI we don't necessarily want to live-stream Markdown to avoid flickering
+                        # but we can show status updates.
+                    elif msg.startswith(agent.TUIMessage.TOOL_CALL + ":"):
+                        import json
+                        data = json.loads(msg[len(agent.TUIMessage.TOOL_CALL) + 1:])
+                        console.print(f"[bold cyan]tool call>[/bold cyan] {data['name']}({data['args']})")
+
                 response = await agent.run_agent_turn(
                     current_prompt if not is_resume else None,
                     session,
-                    signal_handler=None,
+                    signal_handler=cli_signal_handler,
                     memory_service=session_manager.memory,
                 )
-                print(f"yolo> {response}")
+                
+                console.print("\n[bold green]yolo>[/bold green]")
+                console.print(Markdown(response))
+                console.print("-" * 20)
+                
                 session_manager.save(user_id)
                 break # Turn completed successfully
             except agent.PendingConfirmationError as e:
-                print(f"yolo> Confirmation needed: {e.action} -> {e.path}")
+                console.print(Panel(f"Action: [bold]{e.action}[/bold]\nPath: [cyan]{e.path}[/cyan]", title="Confirmation Needed", border_style="yellow"))
                 try:
                     decision = await asyncio.to_thread(input, "Approve and wait for completion? (y/N/background): ")
                     decision = decision.strip().lower()
                 except (EOFError, KeyboardInterrupt):
-                    print("\nAction denied.")
+                    console.print("\n[bold red]Action denied.[/bold red]")
                     break
                 
                 if decision in {"y", "yes"}:
@@ -101,9 +127,7 @@ async def repl(user_id: int, initial_prompt: str = None) -> None:
                     )
                     
                     if result == "__BACKGROUND__":
-                        # Start a background mission for the rest of this turn
-                        # We use the current session history which includes the pending tool
-                        print(f"yolo> Turning current mission into a background task...")
+                        console.print("[bold yellow]yolo>[/bold yellow] Turning current mission into a background task...")
                         await agent.execute_tool_direct(
                             "run_background_mission",
                             {"objective": current_prompt},
@@ -112,19 +136,29 @@ async def repl(user_id: int, initial_prompt: str = None) -> None:
                         )
                         break # Exit interactive turn
 
-                    print(f"tool> {result}")
+                    console.print(f"[bold cyan]tool result>[/bold cyan]\n{result}")
                     
                     # Update history to replace [HITL_PENDING] with actual result
+                    found = False
                     for msg in reversed(session.message_history):
                         if msg.get("role") == "tool" and msg.get("tool_call_id") == e.tool_call_id:
                             msg["content"] = result
+                            found = True
                             break
+                    if not found:
+                        session.message_history.append({
+                            "role": "tool",
+                            "tool_call_id": e.tool_call_id,
+                            "name": e.action,
+                            "content": result
+                        })
                     
+                    session.history_dirty = True
                     session_manager.save(user_id)
                     is_resume = True # Continue the same turn
                     continue
                 elif decision in {"b", "background"}:
-                    print(f"yolo> Backgrounding mission: {current_prompt}")
+                    console.print(f"[bold yellow]yolo>[/bold yellow] Backgrounding mission: {current_prompt}")
                     await agent.execute_tool_direct(
                         "run_background_mission",
                         {"objective": current_prompt},
@@ -133,11 +167,26 @@ async def repl(user_id: int, initial_prompt: str = None) -> None:
                     )
                     break # Exit interactive turn
                 else:
-                    print("yolo> Action denied.")
+                    console.print("[bold red]yolo> Action denied.[/bold red]")
+                    found = False
+                    for msg in reversed(session.message_history):
+                        if msg.get("role") == "tool" and msg.get("tool_call_id") == e.tool_call_id:
+                            msg["content"] = "Action denied by user."
+                            found = True
+                            break
+                    if not found:
+                        session.message_history.append({
+                            "role": "tool",
+                            "tool_call_id": e.tool_call_id,
+                            "name": e.action,
+                            "content": "Action denied by user."
+                        })
+                    session.history_dirty = True
                     session_manager.save(user_id)
-                    break
+                    is_resume = True
+                    continue
             except Exception as e:
-                print(f"yolo> Error: {e}")
+                console.print(f"[bold red]yolo> Error: {e}[/bold red]")
                 break
 
 

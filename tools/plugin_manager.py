@@ -9,7 +9,6 @@ A plugin is just a Python file containing:
 
 import importlib.util
 import inspect
-from pathlib import Path
 from typing import Dict, List, Callable, Any
 
 from tools.base import YOLO_HOME, audit_log

@@ -12,7 +12,8 @@ from dataclasses import dataclass
 try:
     import fcntl
 except ImportError:  # pragma: no cover - non-Unix platforms
-    fcntl = None
+    from typing import Any
+    fcntl: Any = None  # type: ignore[no-redef]
 
 from dotenv import load_dotenv
 

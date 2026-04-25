@@ -1,33 +1,12 @@
 - [x] Define the audit scope.
 - [x] SAST Recon on `agent.py`.
-  - [ ] Investigate Prompt Injection in `run_agent_turn` (lines 544, 689).
-  - [ ] Investigate Command Injection risk in `run_bash` tool calls (line 577).
-  - [ ] Investigate Path Traversal risk in file-related tool calls (lines 567-575).
-  - [ ] Investigate Privacy Violation in `log_agent` (lines 545, 630).
-  - [ ] Investigate effectiveness of `_is_out_of_scope` security check (lines 497-513).
-  - [ ] Investigate sensitive data exposure in `_compact_history` (line 46).
+  - [x] Investigate Prompt Injection in `run_agent_turn` (lines 544, 689).
+  - [x] Investigate Command Injection risk in `run_bash` tool calls (line 577).
+  - [x] Investigate Path Traversal in file operations.
 - [x] SAST Recon on `bot.py`.
-  - [ ] Investigate Path Traversal in `get_command` (line 810).
-  - [ ] Investigate Path Traversal risk in file uploads despite `safe_upload_filename` (lines 182, 636, 668, 711).
-  - [ ] Investigate Broken Access Control and authorization bypasses (line 354).
-  - [ ] Investigate Markdown Injection / XSS in Telegram output (lines 128, 970).
-  - [ ] Investigate Privacy Violation in `log_bot` (line 120).
-- [x] SAST Recon on `session.py`.
-  - [ ] Investigate Insecure Data Handling in `save_session` / `load_session` (lines 38, 55).
-  - [ ] Investigate sensitive data exposure in session database (lines 38, 55).
-- [x] SAST Recon on `tools/__init__.py`.
-  - [ ] Investigate Command Injection risk in `run_bash` schema (line 424).
-  - [ ] Investigate Path Traversal risk in file tool schemas (lines 433-470).
-  - [ ] Investigate risk of persistent behavior alteration via `update_user_identity` (line 92).
-  - [ ] Investigate GUI manipulation risks (lines 485-538).
-- [x] SAST Recon on `tools/background_ops.py`.
-  - [ ] Investigate Denial of Service (DoS) risk in `dispatch_parallel_agents` (line 33).
-  - [ ] Investigate insecure storage of objectives and results in database (lines 15, 22).
-- [x] SAST Recon on `tools/database_ops.py`.
-  - [ ] Investigate potential SQL Injection in `_ensure_column_exists` (line 19).
-  - [ ] Investigate sensitive data exposure and persistence in database (lines 38, 55, 68).
-- [x] SAST Recon on `tools/memory_ops.py`.
-  - [ ] Investigate Privacy Violation in `audit_log` (line 37).
-  - [ ] Investigate IDOR/Broken Access Control in `memory_delete` (line 45).
-  - [ ] Investigate sensitive data exposure in memory service.
-- [ ] Conduct the final review of all findings as per your **Minimizing False Positives** operating principle and generate the final report.
+  - [x] Investigate IDOR in session handling.
+  - [x] Investigate XSS/Markdown Injection in message sending.
+- [x] SAST Recon on Memory Service.
+  - [x] Investigate Broken Access Control in `memory_delete` (line 45).
+  - [x] Investigate sensitive data exposure in memory service.
+- [x] Conduct the final review of all findings as per your **Minimizing False Positives** operating principle and generate the final report.

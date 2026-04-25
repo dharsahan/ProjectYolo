@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from typing import Optional
 from tools.base import YOLO_MISSION_FILE, audit_log
 
 MISSION_FILE = YOLO_MISSION_FILE

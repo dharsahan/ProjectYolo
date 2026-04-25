@@ -6,7 +6,8 @@ def memory_list(user_id: int) -> str:
     """List all stored memories for the current user using shared instance."""
     try:
         memory = get_memory()
-        results = memory.get_all(user_id=str(user_id))
+        # mem0 v2.0.0 requires entity IDs in a filters dict
+        results = memory.get_all(filters={"user_id": str(user_id)})
 
         if isinstance(results, dict) and "results" in results:
             results = results["results"]

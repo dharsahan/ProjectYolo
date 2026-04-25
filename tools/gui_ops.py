@@ -328,7 +328,7 @@ def _classify_element(text: str) -> str:
     if re.match(r"https?://", t) or ".com" in t or ".org" in t:
         return "url"
     # Path-like
-    if "/" in t and not " " in t:
+    if "/" in t and " " not in t:
         return "path"
     # Numeric
     if re.match(r"^[\d.,:%]+$", t):

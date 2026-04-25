@@ -1,7 +1,6 @@
 import json
 import sqlite3
 import threading
-from pathlib import Path
 
 from tools.base import YOLO_HOME
 

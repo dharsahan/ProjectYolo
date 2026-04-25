@@ -9,7 +9,6 @@ working directory.
 import json
 import os
 import subprocess
-from typing import Optional
 
 from tools.base import audit_log
 
@@ -85,7 +84,7 @@ def git_status() -> str:
 
         # Get ahead/behind info
         rc, ahead_behind, _ = _run_git(
-            "rev-list", "--left-right", "--count", f"HEAD...@{{upstream}}"
+            "rev-list", "--left-right", "--count", "HEAD...@{upstream}"
         )
         ahead = behind = 0
         if rc == 0 and ahead_behind.strip():

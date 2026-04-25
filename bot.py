@@ -110,6 +110,9 @@ def log_bot(user_id: int, tag: str, message: str, color: str = Fore.CYAN):
         print(
             f"{Fore.WHITE}[{user_id}] [{timestamp}] {color}{Style.BRIGHT}BOT-{tag}{Style.NORMAL} {message}"
         )
+    # Also log to audit file for TUI visibility
+    from tools.base import audit_log
+    audit_log("bot", {"user_id": user_id}, tag, message)
 
 
 def escape_markdown(text: str) -> str:
@@ -1079,9 +1082,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         pending_list = list(session.pending_confirmations)
-        session.pending_confirmations = []
-
+        
         if query.data == "confirm_all":
+            session.pending_confirmations = []
             await _safe_edit_callback_message("✅ *All Actions Confirmed*")
             try:
                 # Execute all pending in parallel
@@ -1140,7 +1143,69 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     (update.effective_chat.id if update.effective_chat else 0), "One or more tools failed\\."
                 )
                 session_manager.save(user_id)
-        else:
+        
+        elif query.data == "confirm":
+            # Handle single confirmation (first in list)
+            if not pending_list:
+                await _safe_edit_callback_message("ℹ️ *No Pending Actions*")
+                return
+            
+            p = pending_list[0]
+            session.pending_confirmations = pending_list[1:]
+            
+            await _safe_edit_callback_message(f"✅ *Action Confirmed*: `{escape_markdown(p['action'])}`")
+            try:
+                result = await agent.execute_tool_direct(
+                    p["action"],
+                    p["args"],
+                    user_id,
+                    signal_handler=telegram_signal_handler,
+                    session=session,
+                )
+
+                # Update history
+                found = False
+                for msg in reversed(session.message_history):
+                    if (
+                        msg.get("role") == "tool"
+                        and msg.get("tool_call_id") == p["tool_call_id"]
+                    ):
+                        msg["content"] = result
+                        found = True
+                        break
+                if not found:
+                    session.message_history.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": p["tool_call_id"],
+                            "name": p["action"],
+                            "content": result,
+                        }
+                    )
+                session.history_dirty = True
+
+                response = await agent.run_agent_turn(
+                    None,
+                    session,
+                    signal_handler=telegram_signal_handler,
+                    memory_service=session_manager.memory,
+                )
+                await send_long_message((update.effective_chat.id if update.effective_chat else 0), response, context)
+                session_manager.save(user_id)
+            except agent.PendingConfirmationError:
+                await send_confirmation_prompt(
+                    len(session.pending_confirmations), session.pending_confirmations
+                )
+                session_manager.save(user_id)
+            except Exception:
+                logger.exception("Error in confirm callback flow")
+                await context.bot.send_message(
+                    (update.effective_chat.id if update.effective_chat else 0), "Tool execution failed\\."
+                )
+                session_manager.save(user_id)
+
+        elif query.data == "deny_all":
+            session.pending_confirmations = []
             await _safe_edit_callback_message("❌ *All Actions Cancelled*")
             for p in pending_list:
                 for msg in reversed(session.message_history):
@@ -1172,6 +1237,48 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     (update.effective_chat.id if update.effective_chat else 0), "Turn failed after denial\\."
                 )
                 session_manager.save(user_id)
+        
+        elif query.data == "deny":
+            # Handle single denial
+            if not pending_list:
+                await _safe_edit_callback_message("ℹ️ *No Pending Actions*")
+                return
+                
+            p = pending_list[0]
+            session.pending_confirmations = pending_list[1:]
+            
+            await _safe_edit_callback_message(f"❌ *Action Denied*: `{escape_markdown(p['action'])}`")
+            for msg in reversed(session.message_history):
+                if (
+                    msg.get("role") == "tool"
+                    and msg.get("tool_call_id") == p["tool_call_id"]
+                ):
+                    msg["content"] = "Action denied by user."
+                    break
+            session.history_dirty = True
+
+            try:
+                response = await agent.run_agent_turn(
+                    None,
+                    session,
+                    signal_handler=telegram_signal_handler,
+                    memory_service=session_manager.memory,
+                )
+                await send_long_message((update.effective_chat.id if update.effective_chat else 0), response, context)
+                session_manager.save(user_id)
+            except agent.PendingConfirmationError:
+                await send_confirmation_prompt(
+                    len(session.pending_confirmations), session.pending_confirmations
+                )
+                session_manager.save(user_id)
+            except Exception:
+                logger.exception("Error in deny callback flow")
+                await context.bot.send_message(
+                    (update.effective_chat.id if update.effective_chat else 0), "Turn failed after denial\\."
+                )
+                session_manager.save(user_id)
+        else:
+            await query.answer("Unknown action.")
 
 
 async def send_long_message(

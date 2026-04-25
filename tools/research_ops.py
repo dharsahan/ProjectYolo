@@ -29,6 +29,8 @@ def _load_state_locked() -> dict:
     if path.exists():
         try:
             state = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(state, dict):
+                state = {"queue": [], "visited": [], "summaries": []}
         except Exception:
             state = {"queue": [], "visited": [], "summaries": []}
     else:

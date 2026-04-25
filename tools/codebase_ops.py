@@ -3,11 +3,9 @@ Local Codebase RAG operations.
 Indexes the workspace into a local Qdrant vector database and allows semantic search.
 """
 
-import json
 import os
-import re
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 
 from openai import OpenAI
 from qdrant_client import QdrantClient
@@ -50,15 +48,16 @@ MAX_FILE_SIZE = 500 * 1024  # 500 KB limit for text files
 def _get_qdrant_client() -> QdrantClient:
     RAG_DB_PATH.mkdir(parents=True, exist_ok=True)
     client = QdrantClient(path=str(RAG_DB_PATH))
+    embed_dim = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
 
     # Check if collection exists
     try:
         client.get_collection(COLLECTION_NAME)
     except Exception:
-        # Create it (OpenAI text-embedding-3-small uses 1536 dims)
+        # Create it
         client.create_collection(
             collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
+            vectors_config=VectorParams(size=embed_dim, distance=Distance.COSINE),
         )
     return client
 
@@ -72,8 +71,18 @@ def _get_openai_client() -> OpenAI:
 
 
 def _get_embedding(text: str, client: OpenAI) -> List[float]:
-    response = client.embeddings.create(model="text-embedding-3-small", input=text)
+    embedding_model = os.getenv("EMBEDDING_MODEL_NAME", "text-embedding-3-small")
+    response = client.embeddings.create(model=embedding_model, input=text)
     return response.data[0].embedding
+
+
+def _get_embeddings_batch(texts: List[str], client: OpenAI) -> List[List[float]]:
+    if not texts:
+        return []
+    embedding_model = os.getenv("EMBEDDING_MODEL_NAME", "text-embedding-3-small")
+    response = client.embeddings.create(model=embedding_model, input=texts)
+    # The API returns them in the same order as the inputs
+    return [d.embedding for d in sorted(response.data, key=lambda x: x.index)]
 
 
 def _chunk_text(text: str, chunk_size: int = 1500, overlap: int = 200) -> List[str]:
@@ -100,9 +109,14 @@ def codebase_index() -> str:
         # We will re-index everything cleanly
         try:
             q_client.delete_collection(COLLECTION_NAME)
+        except Exception:
+            pass
+            
+        try:
+            embed_dim = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
             q_client.create_collection(
                 collection_name=COLLECTION_NAME,
-                vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
+                vectors_config=VectorParams(size=embed_dim, distance=Distance.COSINE),
             )
         except Exception:
             pass
@@ -112,6 +126,35 @@ def codebase_index() -> str:
 
         indexed_files = 0
         total_chunks = 0
+        
+        # We will accumulate chunks across files to batch embed them
+        batch_texts = []
+        batch_metadata = []
+        
+        def _flush_batch():
+            nonlocal point_id, total_chunks, points, batch_texts, batch_metadata
+            if not batch_texts:
+                return
+                
+            embeddings = _get_embeddings_batch(batch_texts, o_client)
+            for i, embedding in enumerate(embeddings):
+                points.append(
+                    PointStruct(
+                        id=point_id,
+                        vector=embedding,
+                        payload=batch_metadata[i]
+                    )
+                )
+                point_id += 1
+                total_chunks += 1
+                
+                # Batch insert into Qdrant every 100 points
+                if len(points) >= 100:
+                    q_client.upsert(collection_name=COLLECTION_NAME, points=points)
+                    points.clear()
+                    
+            batch_texts.clear()
+            batch_metadata.clear()
 
         for root, dirs, files in os.walk(cwd):
             # Prune ignored directories
@@ -140,36 +183,28 @@ def codebase_index() -> str:
                     chunks = _chunk_text(content)
 
                     for i, chunk in enumerate(chunks):
-                        embedding = _get_embedding(
-                            f"File: {rel_path}\n\n{chunk}", o_client
-                        )
-                        points.append(
-                            PointStruct(
-                                id=point_id,
-                                vector=embedding,
-                                payload={
-                                    "file": str(rel_path),
-                                    "chunk_index": i,
-                                    "content": chunk,
-                                },
-                            )
-                        )
-                        point_id += 1
-                        total_chunks += 1
-
-                        # Batch insert every 100 points
-                        if len(points) >= 100:
-                            q_client.upsert(
-                                collection_name=COLLECTION_NAME, points=points
-                            )
-                            points = []
+                        text_to_embed = f"File: {rel_path}\n\n{chunk}"
+                        batch_texts.append(text_to_embed)
+                        batch_metadata.append({
+                            "file": str(rel_path),
+                            "chunk_index": i,
+                            "content": chunk,
+                        })
+                        
+                        # Max batch size for OpenAI embeddings is generally large, but we'll use 100
+                        # to keep latency smooth and memory low.
+                        if len(batch_texts) >= 100:
+                            _flush_batch()
 
                     indexed_files += 1
-                except Exception as e:
+                except Exception:
                     # Skip files that can't be read
                     continue
 
-        # Insert remaining points
+        # Flush any remaining chunks
+        _flush_batch()
+        
+        # Insert remaining points to Qdrant
         if points:
             q_client.upsert(collection_name=COLLECTION_NAME, points=points)
 

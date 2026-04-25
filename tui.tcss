@@ -118,12 +118,29 @@ UserInput:focus {
 }
 
 #modal-container {
-    width: 60;
+    width: 80;
     height: auto;
+    max-height: 30;
     border: double #ef4444;
     background: #1e293b;
     padding: 1 2;
     align: center middle;
+}
+
+#modal-actions-list {
+    width: 100%;
+    height: auto;
+    max-height: 15;
+    margin-bottom: 1;
+    border: solid #334155;
+    padding: 1;
+    background: #0f172a;
+}
+
+.modal-action-item {
+    width: 100%;
+    color: #f8fafc;
+    margin-bottom: 0;
 }
 
 #modal-title {
@@ -132,12 +149,6 @@ UserInput:focus {
     text-style: bold;
     color: #ef4444;
     margin-bottom: 1;
-}
-
-#modal-action, #modal-path {
-    width: 100%;
-    margin-bottom: 1;
-    color: #f8fafc;
 }
 
 #modal-buttons {

@@ -2,6 +2,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical, ScrollableContainer
 from textual.widgets import Static, Markdown, Input, LoadingIndicator
 from textual.message import Message
+from tools.base import format_log_line
 
 class ChatMessage(Static):
     """A single chat message widget."""
@@ -123,10 +124,10 @@ class LogWidget(Vertical):
                 return
             
             with open(log_path, "r") as f:
-                # Read last 20 lines
+                # Read last 50 lines for better context
                 lines = f.readlines()
-                last_lines = lines[-20:]
-                content_panel.update("".join(last_lines))
+                last_lines = [format_log_line(line.strip()) for line in lines[-50:]]
+                content_panel.update("\n".join(last_lines))
                 # Auto-scroll to bottom
                 self.query_one("#log-scroll").scroll_end(animate=False)
         except Exception as e:

@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 import logging
-from typing import Any, Callable
+from typing import Callable
 from tools.database_ops import add_background_task, update_background_task
 
 logger = logging.getLogger(__name__)
