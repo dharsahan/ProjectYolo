@@ -134,6 +134,81 @@ def _extract_memory_context_payload(memory_context: str) -> str:
         lines = lines[1:]
     return "\n".join(line for line in lines if line.strip()).strip()
 
+async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str, memory_service: Any) -> None:
+    """An isolated loop for a specialized worker agent."""
+    import uuid
+    from tools.base import audit_log
+    
+    worker_session = Session(user_id=user_id)
+    
+    system_prompt = (
+        f"You are a specialized worker agent taking on the role of: {role}.\n"
+        f"Your specific objective is: {objective}\n"
+        f"Your Task ID is: {task_id}\n\n"
+        "You operate in an isolated context. You have access to all coding and research tools.\n"
+        "CRITICAL: When you have finished the objective, you MUST call `report_completion(task_id=..., summary=...)`.\n"
+        "CRITICAL: If you are confused, stuck (e.g. failing tests 3+ times), or blocked by architecture, you MUST call `request_help(task_id=..., reason=..., context=...)`.\n"
+        "Do NOT ask the user for input. You run autonomously."
+    )
+    
+    worker_session.message_history = [{"role": "system", "content": system_prompt}]
+    
+    max_turns = 30
+    turns = 0
+    
+    while turns < max_turns:
+        turns += 1
+        try:
+            response = await router.chat_completions(
+                messages=worker_session.message_history,
+                tools=tools.TOOLS_SCHEMAS,
+                tool_choice="auto",
+                stream=False
+            )
+            
+            msg = response.choices[0].message
+            worker_session.message_history.append(msg.model_dump(exclude_none=True))
+            
+            if not getattr(msg, "tool_calls", None):
+                # Worker didn't call a tool. Force it to report or continue.
+                worker_session.message_history.append({
+                    "role": "user", 
+                    "content": "You did not call a tool. You must either continue working using tools, `report_completion`, or `request_help`."
+                })
+                continue
+                
+            terminate = False
+            for tc in msg.tool_calls:
+                result = await execute_tool_direct(
+                    tc.function.name, 
+                    tc.function.arguments, 
+                    user_id, 
+                    signal_handler=None, 
+                    session=worker_session
+                )
+                
+                worker_session.message_history.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "name": tc.function.name,
+                    "content": result
+                })
+                
+                if "__WORKER_TERMINATE__" in result:
+                    terminate = True
+            
+            if terminate:
+                break
+                
+        except Exception as e:
+            from tools.database_ops import update_worker_status
+            update_worker_status(task_id, "failed", f"Worker crashed: {e}")
+            break
+            
+    if turns >= max_turns:
+        from tools.database_ops import update_worker_status
+        update_worker_status(task_id, "failed", "Worker hit max turns limit.")
+
 
 async def _compact_history(session: Session, router: LLMRouter) -> None:
     if len(session.message_history) <= 10:
