@@ -86,13 +86,16 @@ from tools.gui_ops import (
     gui_read_text_at,
 )
 from tools.codebase_ops import codebase_index, codebase_search
-from tools.team_ops import report_completion, request_help
+from tools.team_ops import report_completion, request_help, spawn_worker, check_workers, spawn_team_discussion
 from tools.plugin_manager import PLUGIN_SCHEMAS
 
 __all__ = [
     "TOOLS_SCHEMAS",
     "report_completion",
     "request_help",
+    "spawn_worker",
+    "check_workers",
+    "spawn_team_discussion",
     "copy_file",
     "delete_file",
     "edit_file",
@@ -214,10 +217,52 @@ TOOLS_SCHEMAS = [
                 "required": ["task_id", "reason", "context"]
             }
         }
-    },
-    {
+        },
+        {
         "type": "function",
-
+        "function": {
+            "name": "spawn_worker",
+            "description": "Spawn an isolated worker agent to handle a specific sub-task in the background. Useful for dividing and conquering.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "role": {"type": "string", "description": "The persona/role (e.g. 'Database Expert', 'Frontend Dev')"},
+                    "objective": {"type": "string", "description": "Clear, detailed instructions for what the worker must accomplish."}
+                },
+                "required": ["role", "objective"]
+            }
+        }
+        },
+        {
+        "type": "function",
+        "function": {
+            "name": "check_workers",
+            "description": "Check the status of all spawned workers. Use this to see if they are 'completed', 'running', or 'needs_help'.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+        },
+        {
+        "type": "function",
+        "function": {
+            "name": "spawn_team_discussion",
+            "description": "Start a peer-to-peer chat room discussion among virtual experts to solve a complex problem or unblock a worker. Returns the full transcript of the debate.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "The problem, context, and what needs to be decided."},
+                    "roles": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of personas to invite (e.g. ['Security Expert', 'Stuck Backend Worker', 'Database Architect'])"
+                    },
+                    "max_rounds": {"type": "integer", "description": "Max turns they take to debate (default 3, max 5)"}
+                },
+                "required": ["topic", "roles"]
+            }
+        }
+        },
+        {
+        "type": "function",
         "function": {
             "name": "update_user_identity",
             "description": "Refine the structural Markdown document that defines the user's engineering style, project preferences, and unstated goals. Use this to ensure I adapt to the user's specific way of working.",
