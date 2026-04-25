@@ -86,10 +86,13 @@ from tools.gui_ops import (
     gui_read_text_at,
 )
 from tools.codebase_ops import codebase_index, codebase_search
+from tools.team_ops import report_completion, request_help
 from tools.plugin_manager import PLUGIN_SCHEMAS
 
 __all__ = [
     "TOOLS_SCHEMAS",
+    "report_completion",
+    "request_help",
     "copy_file",
     "delete_file",
     "edit_file",
@@ -183,6 +186,38 @@ __all__ = [
 TOOLS_SCHEMAS = [
     {
         "type": "function",
+        "function": {
+            "name": "report_completion",
+            "description": "Report that your assigned sub-task is successfully complete. This ends your execution loop.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "summary": {"type": "string", "description": "Summary of changes made"}
+                },
+                "required": ["task_id", "summary"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "request_help",
+            "description": "Report that you are confused, stuck, or blocked. This pauses your execution so the Manager can intervene or spawn a team discussion.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "reason": {"type": "string", "description": "Why you are stuck"},
+                    "context": {"type": "string", "description": "Relevant file paths or errors"}
+                },
+                "required": ["task_id", "reason", "context"]
+            }
+        }
+    },
+    {
+        "type": "function",
+
         "function": {
             "name": "update_user_identity",
             "description": "Refine the structural Markdown document that defines the user's engineering style, project preferences, and unstated goals. Use this to ensure I adapt to the user's specific way of working.",

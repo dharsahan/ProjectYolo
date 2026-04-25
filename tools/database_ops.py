@@ -308,3 +308,32 @@ def list_background_tasks(user_id: int, limit: int = 5):
             (user_id, limit),
         )
         return cursor.fetchall()
+
+
+def add_worker_task(task_id: str, user_id: int, role: str, objective: str):
+    with _conn_ctx() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO background_tasks (task_id, user_id, objective, status) VALUES (?, ?, ?, ?)",
+            (task_id, user_id, f"[{role}] {objective}", "running"),
+        )
+
+
+def get_worker_status(task_id: str) -> dict:
+    with _conn_ctx() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT status, result FROM background_tasks WHERE task_id = ?", (task_id,))
+        row = cursor.fetchone()
+        if row:
+            return {"status": row[0], "result": row[1]}
+        return {"status": "not_found", "result": None}
+
+
+def update_worker_status(task_id: str, status: str, result: str):
+    with _conn_ctx() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE background_tasks SET status = ?, result = ? WHERE task_id = ?",
+            (status, result, task_id),
+        )
+
