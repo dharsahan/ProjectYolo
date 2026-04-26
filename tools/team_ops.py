@@ -93,8 +93,11 @@ async def spawn_team_discussion(topic: str, roles: list[str], max_rounds: int = 
                     tool_choice="none",
                     stream=False
                 )
-                reply = response.choices[0].message.content
-                
+                if not getattr(response, "choices", None) or len(response.choices) == 0:
+                    reply = "[No response generated]"
+                else:
+                    reply = response.choices[0].message.content
+
                 # Save their own thought to their history
                 history.append({"role": "user", "content": prompt})
                 history.append({"role": "assistant", "content": reply})

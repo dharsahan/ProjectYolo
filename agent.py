@@ -184,6 +184,11 @@ async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str,
                         stream=False
                     )
                     
+                    if not getattr(response, "choices", None) or len(response.choices) == 0:
+                        print(f"[{task_id}] Warning: Empty choices from LLM, retrying...")
+                        await asyncio.sleep(1)
+                        continue
+                        
                     msg = response.choices[0].message
                     worker_session.message_history.append(msg.model_dump(exclude_none=True))
                     

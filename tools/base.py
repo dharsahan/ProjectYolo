@@ -4,6 +4,9 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Union
 
+# Disable mem0 telemetry to prevent local qdrant concurrent access errors (migrations_qdrant lock)
+os.environ["MEM0_TELEMETRY"] = "false"
+
 # Global Yolo Paths
 YOLO_HOME = (
     Path(os.getenv("YOLO_HOME", str(Path.home() / ".yolo"))).expanduser().resolve()
@@ -165,6 +168,7 @@ def get_mem0_config():
             "provider": "qdrant",
             "config": {
                 "path": str(memory_path / "qdrant"),
+                "embedding_model_dims": embedding_dim,
             },
         },
         "history_db_path": str(memory_path / "history.db"),

@@ -46,7 +46,7 @@ ipcMain.handle('send-message', async (_event, { message, userId }) => {
 
 ipcMain.handle('get-session', async (_event, { userId }) => {
   try {
-    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/session?user_id=${userId || 1}`);
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/session?user_id=${userId || 1}`, { cache: 'no-store' });
     return await resp.json();
   } catch {
     return { messages: [], history_length: 0 };
@@ -55,7 +55,7 @@ ipcMain.handle('get-session', async (_event, { userId }) => {
 
 ipcMain.handle('health-check', async () => {
   try {
-    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/health`);
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/health`, { cache: 'no-store' });
     return await resp.json();
   } catch {
     return { status: 'offline' };
@@ -64,7 +64,7 @@ ipcMain.handle('health-check', async () => {
 
 ipcMain.handle('fetch-workers', async (_event, userId) => {
   try {
-    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/workers?user_id=${userId || 1}`);
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/workers?user_id=${userId || 1}`, { cache: 'no-store' });
     return await resp.json();
   } catch {
     return { workers: [] };
@@ -73,7 +73,7 @@ ipcMain.handle('fetch-workers', async (_event, userId) => {
 
 ipcMain.handle('fetch-worker-session', async (_event, taskId) => {
   try {
-    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/workers/${taskId}/session`);
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/workers/${taskId}/session`, { cache: 'no-store' });
     return await resp.json();
   } catch {
     return { messages: [] };

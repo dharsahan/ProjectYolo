@@ -120,6 +120,16 @@
       dom.messages.appendChild(createMessageEl(msg));
     });
     scrollToBottom();
+
+    // Apply stagger animation to message elements
+    const elements = dom.messages.querySelectorAll('.message');
+    if (elements.length > 0 && typeof Motion !== 'undefined') {
+      Motion.animate(
+        elements,
+        { opacity: [0, 1], y: [20, 0] },
+        { delay: Motion.stagger(0.05), duration: 0.4, easing: [0.2, 0.8, 0.2, 1] }
+      );
+    }
   }
 
   function createWelcomeScreen() {
@@ -128,10 +138,10 @@
     div.innerHTML = `
       <div class="welcome-icon">
         <div class="welcome-glow"></div>
-        <span>Y</span>
+        <span style="font-family: 'Playfair Display', serif; font-style: italic;">Y</span>
       </div>
-      <h1>Welcome to Yolo</h1>
-      <p>Your autonomous AI agent. Ask anything — code, research, system control, and more.</p>
+      <h1 style="font-family: 'Playfair Display', serif; font-style: italic; letter-spacing: -0.02em;">Welcome to Yolo</h1>
+      <p style="font-family: 'DM Sans', sans-serif;">Your autonomous AI agent. Ask anything — code, research, system control, and more.</p>
       <p style="font-size:12px; color:var(--text-muted); margin-top:8px;">Session is shared with Telegram &amp; CLI. Type <kbd>/</kbd> for commands.</p>
       <div class="quick-actions">
         <button class="quick-action" data-prompt="Help me write a Python script">
@@ -155,6 +165,15 @@
     div.querySelectorAll('.quick-action').forEach(btn => {
       btn.addEventListener('click', () => sendMessage(btn.dataset.prompt));
     });
+
+    if (typeof Motion !== 'undefined') {
+      const actions = div.querySelectorAll('.quick-action');
+      Motion.animate(
+        actions,
+        { opacity: [0, 1], y: [15, 0] },
+        { delay: Motion.stagger(0.1, { startDelay: 0.2 }), duration: 0.5, easing: [0.2, 0.8, 0.2, 1] }
+      );
+    }
     return div;
   }
 
@@ -199,7 +218,14 @@
       <div class="msg-avatar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.28 1.28L3 12l5.8 1.9a2 2 0 0 1 1.28 1.28L12 21l1.9-5.8a2 2 0 0 1 1.28-1.28L21 12l-5.8-1.9a2 2 0 0 1-1.28-1.28Z"/></svg></div>
       <div class="typing-dots"><span></span><span></span><span></span></div>
     `;
+    if (typeof Motion !== 'undefined') {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(10px)';
+    }
     dom.messages.appendChild(el);
+    if (typeof Motion !== 'undefined') {
+      Motion.animate(el, { opacity: 1, y: 0 }, { duration: 0.3, easing: [0.2, 0.8, 0.2, 1] });
+    }
     scrollToBottom();
   }
 
@@ -292,7 +318,20 @@
     const userMsg = { role: 'user', content: text, timestamp: Date.now() };
     state.messages.push(userMsg);
 
-    renderMessages();
+    if (dom.messages.querySelector('.welcome-screen')) {
+      dom.messages.innerHTML = '';
+    }
+    const el = createMessageEl(userMsg);
+    if (typeof Motion !== 'undefined') {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(10px)';
+    }
+    dom.messages.appendChild(el);
+    if (typeof Motion !== 'undefined') {
+      Motion.animate(el, { opacity: 1, y: 0 }, { duration: 0.3, easing: [0.2, 0.8, 0.2, 1] });
+    }
+    scrollToBottom();
+
     dom.input.value = '';
     dom.input.style.height = 'auto';
     dom.sendBtn.disabled = true;
@@ -318,6 +357,8 @@
         }
         if (slashCmd.command === 'start') {
           state.messages = [userMsg];
+          renderMessages();
+          return; // Skip appending the generic assistant message below since it resets
         }
       } else {
         result = await window.yoloAPI.sendMessage({
@@ -331,7 +372,15 @@
       const response = result.response || result.error || 'No response received.';
       const assistantMsg = { role: 'assistant', content: response, timestamp: Date.now() };
       state.messages.push(assistantMsg);
-      dom.messages.appendChild(createMessageEl(assistantMsg));
+      const el = createMessageEl(assistantMsg);
+      if (typeof Motion !== 'undefined') {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(10px)';
+      }
+      dom.messages.appendChild(el);
+      if (typeof Motion !== 'undefined') {
+        Motion.animate(el, { opacity: 1, y: 0 }, { duration: 0.3, easing: [0.2, 0.8, 0.2, 1] });
+      }
 
       // Refresh subtitle stats
       refreshSessionMeta();
@@ -552,4 +601,13 @@
     });
     dom.workerChatMessages.scrollTop = dom.workerChatMessages.scrollHeight;
   }
+
+  // Add mouse tracking effect for subtle lighting/depth
+  document.addEventListener('mousemove', (e) => {
+    const x = e.clientX;
+    const y = e.clientY;
+    document.documentElement.style.setProperty('--mouse-x', `${x}px`);
+    document.documentElement.style.setProperty('--mouse-y', `${y}px`);
+  });
+
 })();
