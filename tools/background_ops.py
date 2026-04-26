@@ -62,7 +62,7 @@ async def dispatch_parallel_agents(
                 task_id,
                 objective,
             )
-            result = await mission_coro(objective)
+            result = await mission_coro(objective, task_id)
             update_background_task(task_id, "completed", str(result))
             logger.info("Parallel agent %s completed (%s)", index, task_id)
             return (task_id, objective, result)

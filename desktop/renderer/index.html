@@ -19,41 +19,6 @@
 </head>
 <body>
   <div id="app">
-    <!-- ═══════════════ SIDEBAR ═══════════════ -->
-    <aside id="sidebar">
-      <div class="sidebar-header">
-        <div class="logo-wrapper">
-          <div class="logo-icon">Y</div>
-          <span class="logo-text">Yolo</span>
-        </div>
-        <button id="sidebar-toggle" class="icon-btn" title="Toggle sidebar">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-        </button>
-      </div>
-
-      <button id="new-chat-btn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span>New Chat</span>
-      </button>
-
-      <div class="sidebar-section-label">RECENT CHATS</div>
-      <div id="chat-list" class="chat-list"></div>
-
-      <!-- Sidebar footer -->
-      <div class="sidebar-footer">
-        <div class="user-profile">
-          <div class="user-avatar">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </div>
-          <span class="user-name">User</span>
-        </div>
-        <button id="settings-btn" class="settings-btn">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          <span>Settings</span>
-        </button>
-      </div>
-    </aside>
-
     <!-- ═══════════════ MAIN CHAT AREA ═══════════════ -->
     <main id="chat-area">
       <!-- Connection status bar -->
@@ -64,16 +29,23 @@
 
       <!-- Chat header -->
       <div id="chat-header">
-        <button id="mobile-menu-btn" class="icon-btn mobile-only">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-        </button>
-        <div class="chat-header-info">
+        <div class="logo-wrapper">
+          <div class="logo-icon">Y</div>
+          <span class="logo-text">Yolo</span>
+        </div>
+        <div class="chat-header-info" style="margin-left: 12px; border-left: 1px solid var(--border); padding-left: 12px;">
           <h2 id="chat-title">New Conversation</h2>
           <span id="chat-subtitle" class="chat-subtitle">Yolo AI Agent</span>
         </div>
         <div class="chat-header-actions">
           <button id="mode-toggle" class="icon-btn" title="Toggle YOLO mode">
             <span class="mode-label">Safe</span>
+          </button>
+          <button id="workers-toggle-btn" class="icon-btn" title="View Workers">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          </button>
+          <button id="settings-btn" class="icon-btn" title="Settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
         </div>
       </div>
@@ -156,6 +128,31 @@
               <option value="light">Light</option>
             </select>
           </div>
+        </div>
+      </div>
+    </div>
+    <!-- ═══════════════ WORKERS PANEL ═══════════════ -->
+    <div id="workers-panel" class="workers-panel hidden">
+      <div class="workers-header">
+        <h2>Background Workers</h2>
+        <button id="close-workers" class="icon-btn" title="Close workers">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div id="workers-content" class="workers-body">
+        <!-- Default list view -->
+        <div id="workers-list-view">
+          <div id="workers-list" class="workers-list"></div>
+        </div>
+        <!-- Drilldown chat view -->
+        <div id="worker-chat-view" class="hidden">
+          <div class="worker-chat-header">
+            <button id="back-to-workers" class="back-btn icon-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </button>
+            <span class="worker-chat-title" id="worker-chat-title">Task ID</span>
+          </div>
+          <div id="worker-chat-messages" class="messages worker-messages"></div>
         </div>
       </div>
     </div>

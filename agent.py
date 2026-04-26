@@ -1026,6 +1026,29 @@ async def execute_tool_direct(
         await signal_handler(
             f"{TUIMessage.TOOL_CALL}:{json.dumps({'name': func_name, 'args': func_args})}"
         )
+    async def _run_with_history_sync(tid: str, objective: str, parent_session: Any, orig_handler: Any):
+        from tools.database_ops import update_background_task_history
+        worker_session = Session(
+            user_id=parent_session.user_id,
+            task_id=tid,
+            message_history=get_background_initial_messages(),
+            yolo_mode=True,
+        )
+        async def wrapped_handler(payload):
+            update_background_task_history(tid, worker_session.message_history)
+            if orig_handler:
+                await orig_handler(payload)
+        
+        try:
+            res = await run_agent_turn(
+                objective, 
+                worker_session, 
+                signal_handler=wrapped_handler, 
+                memory_service=None
+            )
+        finally:
+            update_background_task_history(tid, worker_session.message_history)
+        return res
 
     tool_map = {
         "read_file": lambda **kw: tools.read_file(confirm_func=lambda a, t: True, **kw),
@@ -1102,30 +1125,12 @@ async def execute_tool_direct(
         "mcp_run_tool": lambda **kw: tools.mcp_run_tool(**kw),
         "run_background_mission": lambda **kw: tools.run_background_mission(
             user_id=user_id,
-            mission_coro=lambda tid: run_agent_turn(
-                kw.get("objective"),
-                Session(
-                    user_id=session.user_id,
-                    message_history=get_background_initial_messages(),
-                    yolo_mode=True,
-                ),
-                signal_handler=signal_handler,
-                memory_service=None,
-            ),
+            mission_coro=lambda tid: _run_with_history_sync(tid, kw.get("objective"), session, signal_handler),
             **kw,
         ),
         "dispatch_parallel_agents": lambda **kw: tools.dispatch_parallel_agents(
             user_id=user_id,
-            mission_coro=lambda obj: run_agent_turn(
-                obj,
-                Session(
-                    user_id=session.user_id,
-                    message_history=get_background_initial_messages(),
-                    yolo_mode=True,
-                ),
-                signal_handler=signal_handler,
-                memory_service=None,
-            ),
+            mission_coro=lambda obj, tid: _run_with_history_sync(tid, obj, session, signal_handler),
             **kw,
         ),
         "spawn_worker": lambda **kw: tools.spawn_worker(user_id=user_id, **kw),

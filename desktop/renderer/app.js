@@ -21,11 +21,6 @@
   const $ = (sel) => document.querySelector(sel);
   const dom = {
     app: $('#app'),
-    sidebar: $('#sidebar'),
-    sidebarToggle: $('#sidebar-toggle'),
-    mobileMenu: $('#mobile-menu-btn'),
-    newChatBtn: $('#new-chat-btn'),
-    chatList: $('#chat-list'),
     chatTitle: $('#chat-title'),
     chatSubtitle: $('#chat-subtitle'),
     messagesContainer: $('#messages-container'),
@@ -43,6 +38,15 @@
     settingUserId: $('#setting-user-id'),
     settingMode: $('#setting-mode'),
     settingTheme: $('#setting-theme'),
+    workersToggleBtn: $('#workers-toggle-btn'),
+    workersPanel: $('#workers-panel'),
+    closeWorkers: $('#close-workers'),
+    workersListView: $('#workers-list-view'),
+    workersList: $('#workers-list'),
+    workerChatView: $('#worker-chat-view'),
+    backToWorkers: $('#back-to-workers'),
+    workerChatTitle: $('#worker-chat-title'),
+    workerChatMessages: $('#worker-chat-messages'),
   };
 
   // ── Init ──
@@ -159,7 +163,7 @@
     wrapper.className = `message ${msg.role}`;
 
     if (msg.role === 'assistant') {
-      wrapper.innerHTML = `<div class="msg-avatar">Y</div>`;
+      wrapper.innerHTML = `<div class="msg-avatar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.28 1.28L3 12l5.8 1.9a2 2 0 0 1 1.28 1.28L12 21l1.9-5.8a2 2 0 0 1 1.28-1.28L21 12l-5.8-1.9a2 2 0 0 1-1.28-1.28Z"/></svg></div>`;
     }
 
     const content = document.createElement('div');
@@ -192,7 +196,7 @@
     el.className = 'typing-indicator';
     el.id = 'typing';
     el.innerHTML = `
-      <div class="msg-avatar">Y</div>
+      <div class="msg-avatar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.28 1.28L3 12l5.8 1.9a2 2 0 0 1 1.28 1.28L12 21l1.9-5.8a2 2 0 0 1 1.28-1.28L21 12l-5.8-1.9a2 2 0 0 1-1.28-1.28Z"/></svg></div>
       <div class="typing-dots"><span></span><span></span><span></span></div>
     `;
     dom.messages.appendChild(el);
@@ -205,19 +209,21 @@
   }
 
   // ── Slash commands registry ──
+  const svgIcon = (path) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+
   const SLASH_COMMANDS = [
-    { cmd: 'start',       desc: 'Reset the current session',       icon: '🔄' },
-    { cmd: 'status',      desc: 'Show session status report',      icon: '📊' },
-    { cmd: 'mode',        desc: 'Toggle Safe/YOLO mode',           icon: '⚡', hasArgs: true, hint: 'yolo | safe' },
-    { cmd: 'think',       desc: 'Toggle think mode',               icon: '🧠', hasArgs: true, hint: 'on | off | auto' },
-    { cmd: 'compact',     desc: 'Compact conversation history',    icon: '📦' },
-    { cmd: 'tools',       desc: 'List all available tools',        icon: '🔧' },
-    { cmd: 'experiences', desc: 'Show technical lessons learned',   icon: '📖' },
-    { cmd: 'schedules',   desc: 'Show scheduled tasks',            icon: '📅' },
-    { cmd: 'memories',    desc: 'Show stored user memories',       icon: '💾' },
-    { cmd: 'facts',       desc: 'Show auto-injected basic facts',  icon: '📌' },
-    { cmd: 'forget',      desc: 'Wipe all stored memories',        icon: '🗑️' },
-    { cmd: 'cancel',      desc: 'Cancel pending confirmations',    icon: '❌' },
+    { cmd: 'start',       desc: 'Reset the current session',       icon: svgIcon('<polyline points="1 4 1 10 7 10"></polyline><polyline points="23 20 23 14 17 14"></polyline><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>') },
+    { cmd: 'status',      desc: 'Show session status report',      icon: svgIcon('<line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line>') },
+    { cmd: 'mode',        desc: 'Toggle Safe/YOLO mode',           icon: svgIcon('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>'), hasArgs: true, hint: 'yolo | safe' },
+    { cmd: 'think',       desc: 'Toggle think mode',               icon: svgIcon('<path d="M12 2a8 8 0 0 0-8 8c0 5.4 3.6 7.2 3.6 10.8A1.2 1.2 0 0 0 8.8 22h6.4a1.2 1.2 0 0 0 1.2-1.2c0-3.6 3.6-5.4 3.6-10.8a8 8 0 0 0-8-8z"></path><line x1="9" y1="18" x2="15" y2="18"></line>'), hasArgs: true, hint: 'on | off | auto' },
+    { cmd: 'compact',     desc: 'Compact conversation history',    icon: svgIcon('<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line>') },
+    { cmd: 'tools',       desc: 'List all available tools',        icon: svgIcon('<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>') },
+    { cmd: 'experiences', desc: 'Show technical lessons learned',  icon: svgIcon('<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>') },
+    { cmd: 'schedules',   desc: 'Show scheduled tasks',            icon: svgIcon('<rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>') },
+    { cmd: 'memories',    desc: 'Show stored user memories',       icon: svgIcon('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline>') },
+    { cmd: 'facts',       desc: 'Show auto-injected basic facts',  icon: svgIcon('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle>') },
+    { cmd: 'forget',      desc: 'Wipe all stored memories',        icon: svgIcon('<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>') },
+    { cmd: 'cancel',      desc: 'Cancel pending confirmations',    icon: svgIcon('<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>') },
   ];
 
   function parseSlashCommand(text) {
@@ -377,12 +383,6 @@
 
     dom.input.addEventListener('blur', () => setTimeout(hideCommandPalette, 200));
 
-    // New Chat = /start (resets shared session)
-    dom.newChatBtn.addEventListener('click', () => sendMessage('/start'));
-
-    dom.sidebarToggle.addEventListener('click', () => dom.sidebar.classList.toggle('collapsed'));
-    if (dom.mobileMenu) dom.mobileMenu.addEventListener('click', () => dom.sidebar.classList.toggle('collapsed'));
-
     dom.modeToggle.addEventListener('click', () => {
       const newMode = state.yoloMode ? 'safe' : 'yolo';
       sendMessage(`/mode ${newMode}`);
@@ -395,6 +395,22 @@
       dom.settingsModal.classList.remove('hidden');
     });
     dom.closeSettings.addEventListener('click', () => dom.settingsModal.classList.add('hidden'));
+    
+    // Workers
+    dom.workersToggleBtn.addEventListener('click', () => {
+      dom.workersPanel.classList.toggle('hidden');
+      if (!dom.workersPanel.classList.contains('hidden')) {
+        pollWorkers();
+      }
+    });
+    dom.closeWorkers.addEventListener('click', () => {
+      dom.workersPanel.classList.add('hidden');
+    });
+    dom.backToWorkers.addEventListener('click', () => {
+      dom.workerChatView.classList.add('hidden');
+      dom.workersListView.classList.remove('hidden');
+      state.activeWorkerId = null;
+    });
     dom.settingsModal.addEventListener('click', (e) => {
       if (e.target === dom.settingsModal) dom.settingsModal.classList.add('hidden');
     });
@@ -470,4 +486,70 @@
   function scrollToBottom() { requestAnimationFrame(() => { dom.messagesContainer.scrollTop = dom.messagesContainer.scrollHeight; }); }
 
   init();
+
+  // ── Workers Logic ──
+  function pollWorkers() {
+    if (dom.workersPanel.classList.contains('hidden')) return;
+
+    if (state.activeWorkerId) {
+      fetchWorkerSession(state.activeWorkerId).catch(e => console.error(e));
+    } else {
+      window.yoloAPI.fetchWorkers(state.userId)
+        .then(res => { if (res.workers) renderWorkersList(res.workers); })
+        .catch(e => console.error(e));
+    }
+
+    setTimeout(pollWorkers, 2000);
+  }
+
+  function renderWorkersList(workers) {
+    if (!workers || workers.length === 0) {
+      dom.workersList.innerHTML = '<div style="padding:20px; text-align:center; color:var(--text-muted); font-size:13px;">No active workers</div>';
+      return;
+    }
+    dom.workersList.innerHTML = workers.map(w => `
+      <div class="worker-item" data-id="${w.task_id}">
+        <div class="worker-item-header">
+          <span class="worker-task-id">${w.task_id}</span>
+          <span class="worker-status ${w.status.toLowerCase()}">${w.status}</span>
+        </div>
+        <div class="worker-objective">${w.objective}</div>
+      </div>
+    `).join('');
+
+    dom.workersList.querySelectorAll('.worker-item').forEach(item => {
+      item.addEventListener('click', () => {
+        state.activeWorkerId = item.dataset.id;
+        dom.workerChatTitle.textContent = state.activeWorkerId;
+        dom.workersListView.classList.add('hidden');
+        dom.workerChatView.classList.remove('hidden');
+        dom.workerChatMessages.innerHTML = '<div style="padding:20px; text-align:center; color:var(--text-muted);">Loading session...</div>';
+        fetchWorkerSession(state.activeWorkerId);
+      });
+    });
+  }
+
+  async function fetchWorkerSession(taskId) {
+    try {
+      const res = await window.yoloAPI.fetchWorkerSession(taskId);
+      if (res.messages) {
+        renderWorkerChat(res.messages);
+      }
+    } catch (e) {
+      console.error("Failed to fetch worker session", e);
+    }
+  }
+
+  function renderWorkerChat(messages) {
+    dom.workerChatMessages.innerHTML = '';
+    if (messages.length === 0) {
+      dom.workerChatMessages.innerHTML = '<div style="padding:20px; text-align:center; color:var(--text-muted); font-size:13px;">No messages yet</div>';
+      return;
+    }
+    messages.forEach(msg => {
+      const el = createMessageEl(msg);
+      dom.workerChatMessages.appendChild(el);
+    });
+    dom.workerChatMessages.scrollTop = dom.workerChatMessages.scrollHeight;
+  }
 })();

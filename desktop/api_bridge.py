@@ -285,6 +285,43 @@ async def handle_session_info(request: web.Request) -> web.Response:
     })
 
 
+async def handle_get_workers(request: web.Request) -> web.Response:
+    """GET /workers?user_id=N"""
+    from tools.database_ops import list_background_tasks
+    user_id = int(request.query.get("user_id", DEFAULT_USER_ID))
+    tasks = list_background_tasks(user_id, limit=50)
+    
+    result = []
+    for t in tasks:
+        result.append({
+            "task_id": t[0],
+            "objective": t[1],
+            "status": t[2],
+            "created_at": str(t[3])
+        })
+    return web.json_response({"workers": result})
+
+
+async def handle_get_worker_session(request: web.Request) -> web.Response:
+    """GET /workers/{task_id}/session"""
+    from tools.database_ops import get_background_task_history
+    task_id = request.match_info.get("task_id")
+    if not task_id:
+        return web.json_response({"error": "Missing task_id"}, status=400)
+    
+    history = get_background_task_history(task_id)
+    
+    messages = []
+    for msg in history:
+        role = msg.get("role", "")
+        if role == "system":
+            continue
+        if role in ("user", "assistant", "tool"):
+            messages.append(msg)
+            
+    return web.json_response({"messages": messages})
+
+
 # ── App setup ──
 
 def create_app() -> web.Application:
@@ -293,6 +330,8 @@ def create_app() -> web.Application:
     app.router.add_post("/command", handle_command)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/session", handle_session_info)
+    app.router.add_get("/workers", handle_get_workers)
+    app.router.add_get("/workers/{task_id}/session", handle_get_worker_session)
     return app
 
 

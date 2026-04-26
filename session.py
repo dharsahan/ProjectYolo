@@ -14,6 +14,7 @@ from tools.database_ops import init_db, load_session, save_session
 @dataclass
 class Session:
     user_id: int
+    task_id: Optional[str] = None
     message_history: List[Dict[str, Any]] = field(default_factory=list)
     pending_confirmations: List[Dict[str, Any]] = field(default_factory=list)
     yolo_mode: bool = False

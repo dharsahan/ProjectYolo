@@ -62,6 +62,24 @@ ipcMain.handle('health-check', async () => {
   }
 });
 
+ipcMain.handle('fetch-workers', async (_event, userId) => {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/workers?user_id=${userId || 1}`);
+    return await resp.json();
+  } catch {
+    return { workers: [] };
+  }
+});
+
+ipcMain.handle('fetch-worker-session', async (_event, taskId) => {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/workers/${taskId}/session`);
+    return await resp.json();
+  } catch {
+    return { messages: [] };
+  }
+});
+
 ipcMain.handle('run-command', async (_event, { command, args, userId }) => {
   try {
     const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/command`, {

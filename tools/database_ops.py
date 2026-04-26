@@ -94,6 +94,7 @@ def init_db():
                 objective TEXT,
                 status TEXT,
                 result TEXT,
+                history TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 notified BOOLEAN DEFAULT 0
             )
@@ -116,6 +117,7 @@ def init_db():
         _ensure_column_exists(conn, "sessions", "think_mode", "BOOLEAN")
         _ensure_column_exists(conn, "sessions", "think_mode_policy", "TEXT")
         _ensure_column_exists(conn, "sessions", "pending_confirmation", "TEXT")
+        _ensure_column_exists(conn, "background_tasks", "history", "TEXT")
 
 
 def add_cron(user_id: int, task_description: str, interval_minutes: int):
@@ -284,6 +286,33 @@ def get_pending_notifications():
             WHERE status IN ('completed', 'failed') AND notified = 0
         """)
         return cursor.fetchall()
+
+
+def update_background_task_history(task_id: str, history: list):
+    with _conn_ctx() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE background_tasks SET history = ? WHERE task_id = ?
+        """,
+            (json.dumps(history), task_id),
+        )
+
+
+def get_background_task_history(task_id: str) -> list:
+    with _conn_ctx() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT history FROM background_tasks WHERE task_id = ?",
+            (task_id,),
+        )
+        row = cursor.fetchone()
+        if row and row[0]:
+            try:
+                return json.loads(row[0])
+            except json.JSONDecodeError:
+                return []
+        return []
 
 
 def mark_notified(task_id: str):
