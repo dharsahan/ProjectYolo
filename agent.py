@@ -27,14 +27,19 @@ load_dotenv()
 
 VERBOSE = os.getenv("VERBOSE", "false").lower() == "true"
 
-llm_config = load_llm_config()
-if not llm_config.model:
-    print(
-        f"{Fore.RED}[ERROR] No model configured. Set `MODEL_NAME` or provider-specific model env."
-    )
-    sys.exit(1)
+def _get_router() -> LLMRouter:
+    """Helper to load configuration and return a router instance."""
+    config = load_llm_config()
+    if not config.model:
+        raise ValueError("No LLM model configured.")
+    return LLMRouter(config)
 
-router = LLMRouter(llm_config)
+router = _get_router()
+
+def reload_router():
+    """Manually reload the global router (useful for tests or env changes)."""
+    global router
+    router = _get_router()
 _REPO_HAS_TESTS_CACHE: Optional[bool] = None
 AUTO_FACTS_START = "[AUTO_BASIC_FACTS]"
 AUTO_FACTS_END = "[/AUTO_BASIC_FACTS]"
@@ -71,7 +76,8 @@ def _resolve_prompt_profile(profile: Optional[str] = None) -> str:
     if env_profile in {"verbose", "compact"}:
         return env_profile
 
-    return "compact" if _is_small_model_name(llm_config.model or "") else "verbose"
+    config = load_llm_config()
+    return "compact" if _is_small_model_name(config.model or "") else "verbose"
 
 
 def _load_prompt_template(name: str) -> Optional[str]:
@@ -138,7 +144,14 @@ async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str,
     """An isolated loop for a specialized worker agent."""
     import uuid
     from tools.base import audit_log
+    from tools.database_ops import add_worker_task
     
+    # Ensure a record exists in the DB immediately
+    try:
+        add_worker_task(task_id, user_id, role, objective)
+    except Exception:
+        pass # If already added by spawn_worker, ignore
+
     worker_session = Session(user_id=user_id)
     
     system_prompt = (
@@ -156,58 +169,78 @@ async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str,
     max_turns = 30
     turns = 0
     
-    while turns < max_turns:
-        turns += 1
-        try:
-            response = await router.chat_completions(
-                messages=worker_session.message_history,
-                tools=tools.TOOLS_SCHEMAS,
-                tool_choice="auto",
-                stream=False
-            )
-            
-            msg = response.choices[0].message
-            worker_session.message_history.append(msg.model_dump(exclude_none=True))
-            
-            if not getattr(msg, "tool_calls", None):
-                # Worker didn't call a tool. Force it to report or continue.
-                worker_session.message_history.append({
-                    "role": "user", 
-                    "content": "You did not call a tool. You must either continue working using tools, `report_completion`, or `request_help`."
-                })
-                continue
-                
-            terminate = False
-            for tc in msg.tool_calls:
-                result = await execute_tool_direct(
-                    tc.function.name, 
-                    tc.function.arguments, 
-                    user_id, 
-                    signal_handler=None, 
-                    session=worker_session
-                )
-                
-                worker_session.message_history.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "name": tc.function.name,
-                    "content": result
-                })
-                
-                if "__WORKER_TERMINATE__" in result:
-                    terminate = True
-            
-            if terminate:
-                break
-                
-        except Exception as e:
-            from tools.database_ops import update_worker_status
-            update_worker_status(task_id, "failed", f"Worker crashed: {e}")
-            break
-            
-    if turns >= max_turns:
+    try:
+        # Prevent zombie workers by adding a global timeout (30 mins)
+        async def _run():
+            nonlocal turns
+            while turns < max_turns:
+                turns += 1
+                print(f"[{task_id}] Turn {turns}...")
+                try:
+                    response = await router.chat_completions(
+                        messages=worker_session.message_history,
+                        tools=tools.TOOLS_SCHEMAS,
+                        tool_choice="auto",
+                        stream=False
+                    )
+                    
+                    msg = response.choices[0].message
+                    worker_session.message_history.append(msg.model_dump(exclude_none=True))
+                    
+                    if not getattr(msg, "tool_calls", None):
+                        # Worker didn't call a tool. Force it to report or continue.
+                        worker_session.message_history.append({
+                            "role": "user", 
+                            "content": "You did not call a tool. You must either continue working using tools, `report_completion`, or `request_help`."
+                        })
+                        continue
+                        
+                    terminate = False
+                    for tc in msg.tool_calls:
+                        print(f"[{task_id}] Executing {tc.function.name}...")
+                        result = await execute_tool_direct(
+                            tc.function.name, 
+                            tc.function.arguments, 
+                            user_id, 
+                            signal_handler=None, 
+                            session=worker_session
+                        )
+                        print(f"[{task_id}] Result: {result[:100]}...")
+                        
+                        worker_session.message_history.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "name": tc.function.name,
+                            "content": result
+                        })
+                        
+                        if "__WORKER_TERMINATE__" in result:
+                            terminate = True
+                    
+                    if terminate:
+                        break
+                        
+                except Exception as e:
+                    from tools.database_ops import update_worker_status
+                    err_msg = str(e)
+                    if "401" in err_msg or "unauthorized" in err_msg.lower():
+                        update_worker_status(task_id, "failed", f"Unauthorized: LLM token expired or invalid.")
+                    else:
+                        update_worker_status(task_id, "failed", f"Worker crashed: {e}")
+                    return True # Error handled
+
+            if turns >= max_turns:
+                from tools.database_ops import update_worker_status
+                update_worker_status(task_id, "failed", "Worker hit max turns limit.")
+            return False
+
+        await asyncio.wait_for(_run(), timeout=1800) # 30 minute timeout
+    except asyncio.TimeoutError:
         from tools.database_ops import update_worker_status
-        update_worker_status(task_id, "failed", "Worker hit max turns limit.")
+        update_worker_status(task_id, "failed", "Worker timed out after 30 minutes.")
+    except Exception as e:
+        from tools.database_ops import update_worker_status
+        update_worker_status(task_id, "failed", f"Global worker loop error: {e}")
 
 
 async def _compact_history(session: Session, router: LLMRouter) -> None:
@@ -974,11 +1007,17 @@ def _is_out_of_scope(args: dict) -> bool:
 
 async def execute_tool_direct(
     func_name: str,
-    func_args: dict,
+    func_args: Any,
     user_id: int,
     signal_handler: Optional[Callable] = None,
     session: Any = None,
 ) -> str:
+    if isinstance(func_args, str):
+        try:
+            func_args = json.loads(func_args)
+        except Exception:
+            return f"Error: Arguments for {func_name} must be a JSON object string or dict. Got: {func_args}"
+
     if not isinstance(func_args, dict):
         return f"Error: Invalid arguments for {func_name}; expected object."
 
@@ -1092,6 +1131,7 @@ async def execute_tool_direct(
         "spawn_worker": lambda **kw: tools.spawn_worker(user_id=user_id, **kw),
         "check_workers": lambda **kw: tools.check_workers(user_id=user_id, **kw),
         "spawn_team_discussion": lambda **kw: tools.spawn_team_discussion(**kw),
+        "cancel_all_workers": lambda **kw: tools.cancel_all_workers(user_id=user_id, **kw),
         "report_completion": lambda **kw: tools.report_completion(**kw),
         "request_help": lambda **kw: tools.request_help(**kw),
         "learn_experience": lambda **kw: tools.learn_experience(user_id=user_id, **kw),

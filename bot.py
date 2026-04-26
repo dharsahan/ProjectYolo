@@ -13,6 +13,9 @@ from typing import Optional
 import telegram.error
 from colorama import Fore, Style, init
 from dotenv import load_dotenv
+
+# Silence PTB DeprecationWarning by opting into future behavior
+os.environ.setdefault("PTB_TIMEDELTA", "true")
 from openai import AsyncOpenAI
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
@@ -117,17 +120,22 @@ def log_bot(user_id: int, tag: str, message: str, color: str = Fore.CYAN):
 
 def escape_markdown(text: str) -> str:
     """Escape special MarkdownV2 characters for raw content."""
-    escape_chars = r"\_*[]()~`>#+-=|{}.!"
-    return "".join(f"\\{c}" if c in escape_chars else c for c in text)
+    # characters from Telegram docs: _ * [ ] ( ) ~ ` > # + - = | { } . !
+    escape_chars = "_*[]()~`>#+-=|{}.!"
+    res = ""
+    for c in text:
+        if c in escape_chars:
+            res += f"\\{c}"
+        else:
+            res += c
+    return res
 
 
 def build_telegram_signal_handler(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     status_msg_id: Optional[int] = None
-    stream_msg_id: Optional[int] = None
-    last_stream_time = 0.0
 
     async def telegram_signal_handler(signal_str: str) -> Optional[str]:
-        nonlocal status_msg_id, stream_msg_id, last_stream_time
+        nonlocal status_msg_id
 
         if signal_str.startswith("__SEND_FILE__:"):
             file_path = signal_str.replace("__SEND_FILE__:", "")
@@ -174,45 +182,6 @@ def build_telegram_signal_handler(context: ContextTypes.DEFAULT_TYPE, chat_id: i
                     status_msg_id = msg.message_id
                 except Exception:
                     pass
-            return None
-
-        if signal_str.startswith("__STREAM__:"):
-            content = signal_str.replace("__STREAM__:", "")
-            if not content:
-                return None
-
-            now = time.time()
-            # Throttle stream updates to avoid Telegram rate limits (1.2s interval)
-            if stream_msg_id and (now - last_stream_time < 1.2):
-                return None
-
-            if len(content) > 4000:
-                content = content[:4000] + "...\n[Streaming paused due to length limit]"
-
-            try:
-                if stream_msg_id:
-                    await context.bot.edit_message_text(
-                        chat_id=chat_id, message_id=stream_msg_id, text=content + " ✍️"
-                    )
-                else:
-                    msg = await context.bot.send_message(
-                        chat_id=chat_id, text=content + " ✍️"
-                    )
-                    stream_msg_id = msg.message_id
-                last_stream_time = now
-            except Exception:
-                pass
-            return None
-
-        if signal_str.startswith("__STREAM_END__:"):
-            if stream_msg_id:
-                try:
-                    await context.bot.delete_message(
-                        chat_id=chat_id, message_id=stream_msg_id
-                    )
-                except Exception:
-                    pass
-                stream_msg_id = None
             return None
 
         return None
@@ -279,6 +248,16 @@ async def maybe_extract_image_text(
     effective_mime = (
         mime_type or mimetypes.guess_type(str(image_path))[0] or "image/jpeg"
     )
+    
+    # OpenAI Vision support: jpeg, png, webp, gif. 
+    # Some proxies (like Copilot) are even stricter.
+    supported_types = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
+    if effective_mime not in supported_types:
+        # Fallback: most images can be parsed as jpeg by the model if they are image-like.
+        # If it's something really weird (e.g. image/svg+xml), the model will just fail to parse,
+        # but we avoid the 400 'invalid media type' error from the API gateway.
+        effective_mime = "image/jpeg"
+
     try:
         # Performance: read file off the event loop. Photos can be many MB and
         # base64-encoding plus disk I/O on the loop blocks all other coroutines.
@@ -1208,13 +1187,24 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session.pending_confirmations = []
             await _safe_edit_callback_message("❌ *All Actions Cancelled*")
             for p in pending_list:
+                found = False
                 for msg in reversed(session.message_history):
                     if (
                         msg.get("role") == "tool"
                         and msg.get("tool_call_id") == p["tool_call_id"]
                     ):
                         msg["content"] = "Action denied by user."
+                        found = True
                         break
+                if not found:
+                    session.message_history.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": p["tool_call_id"],
+                            "name": p["action"],
+                            "content": "Action denied by user.",
+                        }
+                    )
             session.history_dirty = True
 
             try:
@@ -1350,6 +1340,17 @@ async def send_long_message(
 async def post_init(application: Application) -> None:
     asyncio.create_task(session_manager.auto_expiry_task())
 
+    # Start the desktop bridge so the Electron app can connect on-demand.
+    # Runs as a background task inside PTB's event loop, sharing session_manager.
+    if os.getenv("ENABLE_DESKTOP_BRIDGE", "true").lower() == "true":
+        try:
+            from desktop.api_bridge import run_desktop_bridge
+            asyncio.create_task(run_desktop_bridge(
+                shared_session_manager=session_manager,
+            ))
+        except Exception as e:
+            logger.warning(f"Desktop bridge failed to start: {e}")
+
     async def notification_worker():
         from tools.database_ops import get_pending_notifications, mark_notified
 
@@ -1383,6 +1384,16 @@ async def post_init(application: Application) -> None:
                                 chat_id=uid, text=msg, parse_mode=ParseMode.MARKDOWN_V2
                             )
                             delivered = True
+                        except telegram.error.RetryAfter as e:
+                            delay = float(e.retry_after.total_seconds()) if hasattr(e.retry_after, "total_seconds") else float(e.retry_after)
+                            logger.warning(f"Flood control in notification_worker, sleeping {delay}s")
+                            await asyncio.sleep(delay)
+                            # Retry this specific part
+                            try:
+                                await application.bot.send_message(chat_id=uid, text=msg, parse_mode=ParseMode.MARKDOWN_V2)
+                                delivered = True
+                            except Exception:
+                                pass # Fallback to plain below
                         except telegram.error.BadRequest as e:
                             # Markdown parse errors or length issues are recoverable via plain text fallback.
                             plain_msg = f"🔔 Mission Update{suffix}\nID: {tid}\nObjective: {obj}\nStatus: {stat.upper()}\n\nResult: {r_part}"
@@ -1394,6 +1405,9 @@ async def post_init(application: Application) -> None:
                                     chat_id=uid, text=plain_msg
                                 )
                                 delivered = True
+                            except telegram.error.RetryAfter as re:
+                                delay = float(re.retry_after.total_seconds()) if hasattr(re.retry_after, "total_seconds") else float(re.retry_after)
+                                await asyncio.sleep(delay)
                             except telegram.error.BadRequest as plain_err:
                                 if "chat not found" in str(plain_err).lower():
                                     logger.warning(

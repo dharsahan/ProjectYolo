@@ -86,7 +86,7 @@ from tools.gui_ops import (
     gui_read_text_at,
 )
 from tools.codebase_ops import codebase_index, codebase_search
-from tools.team_ops import report_completion, request_help, spawn_worker, check_workers, spawn_team_discussion
+from tools.team_ops import report_completion, request_help, spawn_worker, check_workers, spawn_team_discussion, cancel_all_workers
 from tools.plugin_manager import PLUGIN_SCHEMAS
 
 __all__ = [
@@ -96,6 +96,7 @@ __all__ = [
     "spawn_worker",
     "check_workers",
     "spawn_team_discussion",
+    "cancel_all_workers",
     "copy_file",
     "delete_file",
     "edit_file",
@@ -259,6 +260,14 @@ TOOLS_SCHEMAS = [
                 },
                 "required": ["topic", "roles"]
             }
+        }
+        },
+        {
+        "type": "function",
+        "function": {
+            "name": "cancel_all_workers",
+            "description": "Forcefully cancel all currently running background workers. Use this if the team is stuck or producing errors.",
+            "parameters": {"type": "object", "properties": {}}
         }
         },
         {

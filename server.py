@@ -32,7 +32,7 @@ async def _serve(mode: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Yolo gateway server wrapper (Telegram/Discord-ready)."
+        description="Yolo gateway server wrapper (Telegram/Discord-ready).",
     )
     parser.add_argument(
         "--mode",

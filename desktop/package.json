@@ -1,0 +1,16 @@
+{
+  "name": "yolo-desktop",
+  "version": "1.0.0",
+  "description": "Yolo AI Agent — Desktop Chat Interface",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "bridge": "python3 api_bridge.py"
+  },
+  "author": "Project Yolo",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

@@ -42,7 +42,7 @@ def check_workers(user_id: int) -> str:
         cursor = conn.cursor()
         # Fetch tasks that start with w_ to identify workers vs standard bg tasks
         cursor.execute(
-            "SELECT task_id, objective, status, result FROM background_tasks WHERE user_id = ? AND task_id LIKE 'w_%' ORDER BY id DESC LIMIT 10",
+            "SELECT task_id, objective, status, result FROM background_tasks WHERE user_id = ? AND task_id LIKE 'w_%' ORDER BY created_at DESC LIMIT 10",
             (user_id,)
         )
         rows = cursor.fetchall()
@@ -116,3 +116,16 @@ async def spawn_team_discussion(topic: str, roles: list[str], max_rounds: int = 
         
     audit_log("spawn_team_discussion", {"topic": topic, "roles": roles}, "success")
     return "\n".join(transcript)
+
+def cancel_all_workers(user_id: int) -> str:
+    """Manager tool: Forcefully cancel all currently 'running' workers for the user."""
+    with _conn_ctx() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE background_tasks SET status = 'cancelled', result = 'Terminated by manager' WHERE user_id = ? AND status = 'running'",
+            (user_id,)
+        )
+        count = cursor.rowcount
+    
+    audit_log("cancel_all_workers", {"count": count}, "success")
+    return f"Successfully cancelled {count} running workers."
