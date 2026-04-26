@@ -47,6 +47,12 @@
     backToWorkers: $('#back-to-workers'),
     workerChatTitle: $('#worker-chat-title'),
     workerChatMessages: $('#worker-chat-messages'),
+    voiceBtn: $('#voice-btn'),
+    recordingIndicator: $('#recording-indicator'),
+    fileUpload: $('#file-upload'),
+    cancelVoiceBtn: $('#cancel-voice-btn'),
+    recordingTime: $('.recording-time'),
+    attachMenu: $('#attach-menu'),
   };
 
   // ── Init ──
@@ -413,7 +419,14 @@
 
   // ── Events ──
   function bindEvents() {
-    dom.sendBtn.addEventListener('click', () => sendMessage(dom.input.value));
+    dom.sendBtn.addEventListener('click', () => {
+      if (!dom.recordingIndicator.classList.contains('hidden')) {
+        toggleRecording(false);
+        sendMessage("🎤 [Voice Message attached]");
+      } else {
+        sendMessage(dom.input.value);
+      }
+    });
     dom.input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(dom.input.value); }
     });
@@ -435,6 +448,88 @@
     dom.modeToggle.addEventListener('click', () => {
       const newMode = state.yoloMode ? 'safe' : 'yolo';
       sendMessage(`/mode ${newMode}`);
+    });
+
+    // File Attach
+    dom.attachBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault(); 
+      dom.attachMenu.classList.toggle('hidden');
+    });
+
+    document.querySelectorAll('.attach-menu-item').forEach(item => {
+      item.addEventListener('click', () => {
+        dom.input.focus(); // This will expand the bar
+        dom.attachMenu.classList.add('hidden');
+        dom.fileUpload.click();
+      });
+    });
+
+    // Close attach menu on click outside
+    document.addEventListener('mousedown', (e) => {
+      if (dom.attachMenu && !dom.attachMenu.classList.contains('hidden')) {
+        if (!dom.attachMenu.contains(e.target) && !dom.attachBtn.contains(e.target)) {
+          dom.attachMenu.classList.add('hidden');
+        }
+      }
+    });
+
+    dom.fileUpload.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        const files = Array.from(e.target.files).map(f => f.name).join(', ');
+        dom.input.value += `[Attached: ${files}] `;
+        dom.input.focus();
+        dom.sendBtn.disabled = false;
+      }
+      e.target.value = ''; // Reset for consecutive uploads
+    });
+
+    // Voice Recording State
+    let recordingTimer;
+    let recordingSeconds = 0;
+
+    function startRecordingTimer() {
+      recordingSeconds = 0;
+      dom.recordingTime.textContent = '0:00';
+      recordingTimer = setInterval(() => {
+        recordingSeconds++;
+        const mins = Math.floor(recordingSeconds / 60);
+        const secs = (recordingSeconds % 60).toString().padStart(2, '0');
+        dom.recordingTime.textContent = `${mins}:${secs}`;
+      }, 1000);
+    }
+
+    function stopRecordingTimer() {
+      clearInterval(recordingTimer);
+    }
+
+    function toggleRecording(start) {
+      if (start) {
+        dom.input.parentElement.classList.add('expanded');
+        dom.voiceBtn.classList.add('recording');
+        dom.voiceBtn.classList.add('hidden'); // Hide voice button while recording
+        dom.recordingIndicator.classList.remove('hidden');
+        dom.input.classList.add('hidden');
+        dom.sendBtn.disabled = false; // Ensure send is clickable
+        startRecordingTimer();
+      } else {
+        dom.input.parentElement.classList.remove('expanded');
+        dom.voiceBtn.classList.remove('recording');
+        dom.voiceBtn.classList.remove('hidden');
+        dom.recordingIndicator.classList.add('hidden');
+        dom.input.classList.remove('hidden');
+        dom.sendBtn.disabled = !dom.input.value.trim(); // Revert to text logic
+        stopRecordingTimer();
+      }
+    }
+
+    dom.voiceBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const isRecording = !dom.voiceBtn.classList.contains('recording');
+      toggleRecording(isRecording);
+    });
+
+    dom.cancelVoiceBtn.addEventListener('click', () => {
+      toggleRecording(false);
     });
 
     // Settings
