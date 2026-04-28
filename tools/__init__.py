@@ -57,6 +57,7 @@ from tools.skill_ops import develop_new_skill, list_skills, read_skill
 from tools.system_ops import (
     run_bash,
     terminal_interactive_run,
+    terminal_list,
     terminal_read,
     terminal_send,
     terminal_start,
@@ -113,6 +114,7 @@ __all__ = [
     "develop_new_skill",
     "run_bash",
     "terminal_interactive_run",
+    "terminal_list",
     "terminal_start",
     "terminal_send",
     "terminal_read",
@@ -900,7 +902,7 @@ TOOLS_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "run_bash",
-            "description": "Execute shell command.",
+            "description": "Execute a one-shot shell command and return stdout/stderr. Has a 5-minute timeout. Best for quick, non-interactive commands (ls, cat, grep, git status). For commands that may take longer than 5 minutes (npx, npm install, large git clone, docker build, compilation), or that prompt for input (y/n), use terminal_start + terminal_send + terminal_read instead.",
             "parameters": {
                 "type": "object",
                 "properties": {"command": {"type": "string"}},
@@ -912,17 +914,17 @@ TOOLS_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "terminal_start",
-            "description": "Start a persistent interactive terminal session. Use this before sending input to prompts.",
+            "description": "Start a persistent interactive PTY terminal session. Returns a session_id you must save. Use this when you need to: (1) interact with prompts (y/n, passwords, menus), (2) run long-lived processes (servers, watchers), (3) maintain shell state across commands (cd, exports, virtualenvs), (4) use tools like ssh, docker exec, python REPL, node REPL. Always call terminal_stop when done.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "shell": {
                         "type": "string",
-                        "description": "Optional shell command (default: current SHELL).",
+                        "description": "Shell binary to use (default: $SHELL or /bin/bash). Examples: /bin/bash, /bin/zsh, python3, node.",
                     },
                     "cwd": {
                         "type": "string",
-                        "description": "Optional working directory inside workspace.",
+                        "description": "Working directory to start in.",
                     },
                 },
             },
@@ -932,14 +934,14 @@ TOOLS_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "terminal_send",
-            "description": "Send typed input to an existing terminal session. Can simulate pressing Enter.",
+            "description": "Send text input to an existing terminal session (like typing on a keyboard then pressing Enter). Use this to type commands, answer prompts (y/n), enter passwords, or send Ctrl sequences (use \\x03 for Ctrl-C, \\x04 for Ctrl-D). Set append_newline=false when sending raw keystrokes without Enter.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "session_id": {"type": "string"},
-                    "text": {"type": "string"},
-                    "append_newline": {"type": "boolean"},
-                    "read_after_send": {"type": "boolean"},
+                    "text": {"type": "string", "description": "Text to type. Use \\x03 for Ctrl-C, \\x04 for Ctrl-D, \\t for Tab."},
+                    "append_newline": {"type": "boolean", "description": "If true (default), press Enter after typing. Set false for raw input like Ctrl-C."},
+                    "read_after_send": {"type": "boolean", "description": "If true (default), read output after sending. Set false for fire-and-forget."},
                 },
                 "required": ["session_id", "text"],
             },
@@ -949,12 +951,13 @@ TOOLS_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "terminal_read",
-            "description": "Read available output from a terminal session without sending new input.",
+            "description": "Read buffered output from a terminal session without sending any input. Use wait_seconds > 0 for slow commands (compilation, package install, test runs) to block until output appears instead of getting 'No new output'.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "session_id": {"type": "string"},
-                    "max_chars": {"type": "integer"},
+                    "max_chars": {"type": "integer", "description": "Max characters to read (default: 30000)."},
+                    "wait_seconds": {"type": "number", "description": "If > 0, poll until output appears or timeout. Useful for waiting on slow processes. Default 0 (instant read)."},
                 },
                 "required": ["session_id"],
             },
@@ -963,13 +966,21 @@ TOOLS_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "terminal_list",
+            "description": "List all active terminal sessions with their session_id, status (running/exited), shell, working directory, age, and PID. Use this to find existing sessions to reuse instead of starting new ones, or to identify sessions that need cleanup.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "terminal_stop",
-            "description": "Stop and clean up a terminal session when interaction is complete.",
+            "description": "Stop and clean up an interactive terminal session. Always call this when you are done with a session to avoid resource leaks. Use force=true for hung processes.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "session_id": {"type": "string"},
-                    "force": {"type": "boolean"},
+                    "force": {"type": "boolean", "description": "If true, use SIGKILL instead of SIGTERM."},
                 },
                 "required": ["session_id"],
             },
@@ -979,34 +990,34 @@ TOOLS_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "terminal_interactive_run",
-            "description": "Run an interactive terminal flow in one call: start session, send command and follow-up inputs, collect transcript, optionally stop session.",
+            "description": "Convenience: run a full interactive terminal flow in one call. Starts a session, sends a command, sends follow-up inputs (for prompts), reads all output, and optionally stops. Best for predictable multi-step interactions where you know all inputs upfront (e.g., npm init with known answers, apt install -y, configure scripts).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "command": {
                         "type": "string",
-                        "description": "Optional initial command to run right after session start.",
+                        "description": "Initial command to run after session starts.",
                     },
                     "inputs": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Optional follow-up input lines to send interactively.",
+                        "description": "Follow-up input lines to send for interactive prompts.",
                     },
                     "cwd": {
                         "type": "string",
-                        "description": "Optional working directory inside workspace.",
+                        "description": "Working directory.",
                     },
                     "shell": {
                         "type": "string",
-                        "description": "Optional shell command (default: current SHELL).",
+                        "description": "Shell binary (default: $SHELL).",
                     },
                     "stop_after": {
                         "type": "boolean",
-                        "description": "If true, stop the session at the end.",
+                        "description": "If true (default), stop the session after collecting output.",
                     },
                     "force_stop": {
                         "type": "boolean",
-                        "description": "If true and stopping, use force kill semantics.",
+                        "description": "If true and stopping, use SIGKILL.",
                     },
                 },
             },

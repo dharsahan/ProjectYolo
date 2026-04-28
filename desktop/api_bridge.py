@@ -97,6 +97,107 @@ async def handle_chat(request: web.Request) -> web.Response:
             return web.json_response({"error": str(exc)}, status=500)
 
 
+async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
+    """POST /chat/stream — SSE streaming: tokens arrive as `data:` events."""
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    message = data.get("message", "").strip()
+    user_id = int(data.get("user_id", 1))
+
+    if not message:
+        return web.json_response({"error": "Empty message"}, status=400)
+
+    resp = web.StreamResponse(
+        status=200,
+        reason="OK",
+        headers={
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+    await resp.prepare(request)
+
+    stream_queue = asyncio.Queue()
+
+    async def _signal_handler(signal_text: str):
+        """Bridge agent __STREAM__ signals into the SSE queue."""
+        if signal_text.startswith("__STREAM__:"):
+            content = signal_text[len("__STREAM__:"):]
+            await stream_queue.put(("stream", content))
+        elif signal_text.startswith("__STREAM_END__"):
+            await stream_queue.put(("end", ""))
+        elif signal_text.startswith("__STATUS__:"):
+            status_text = signal_text[len("__STATUS__:"):].strip()
+            if status_text:
+                await stream_queue.put(("status", status_text))
+
+    async def _run_turn():
+        """Run the agent turn in background and push final result."""
+        try:
+            async with session_manager.get_lock(user_id):
+                session = session_manager.get_or_create(user_id)
+                try:
+                    final = await yolo_agent.run_agent_turn(
+                        message,
+                        session,
+                        signal_handler=_signal_handler,
+                        memory_service=session_manager.memory,
+                    )
+                    session_manager.save(user_id)
+                    await stream_queue.put(("done", final))
+                except yolo_agent.PendingConfirmationError as e:
+                    result = await yolo_agent.execute_tool_direct(
+                        e.action, e.tool_args, user_id,
+                        signal_handler=_signal_handler, session=session,
+                    )
+                    for msg in reversed(session.message_history):
+                        if msg.get("role") == "tool" and msg.get("tool_call_id") == e.tool_call_id:
+                            msg["content"] = result
+                            break
+                    session.history_dirty = True
+                    try:
+                        final = await yolo_agent.run_agent_turn(
+                            None, session, signal_handler=_signal_handler,
+                            memory_service=session_manager.memory,
+                        )
+                    except Exception:
+                        final = f"Tool executed: {result}"
+                    session_manager.save(user_id)
+                    await stream_queue.put(("done", final))
+        except Exception as exc:
+            await stream_queue.put(("error", str(exc)))
+
+    task = asyncio.create_task(_run_turn())
+
+    try:
+        while True:
+            event_type, payload = await stream_queue.get()
+            if event_type == "stream":
+                await resp.write(f"event: stream\ndata: {json.dumps(payload)}\n\n".encode())
+            elif event_type == "status":
+                await resp.write(f"event: status\ndata: {json.dumps(payload)}\n\n".encode())
+            elif event_type == "done":
+                await resp.write(f"event: done\ndata: {json.dumps(payload)}\n\n".encode())
+                break
+            elif event_type == "error":
+                await resp.write(f"event: error\ndata: {json.dumps(payload)}\n\n".encode())
+                break
+            elif event_type == "end":
+                pass  # Stream ended, wait for done
+    except (ConnectionResetError, asyncio.CancelledError):
+        task.cancel()
+    finally:
+        if not task.done():
+            await task
+
+    return resp
+
+
 async def handle_command(request: web.Request) -> web.Response:
     """POST /command  — execute a slash command against the shared session."""
     try:
@@ -327,6 +428,7 @@ async def handle_get_worker_session(request: web.Request) -> web.Response:
 def create_app() -> web.Application:
     app = web.Application()
     app.router.add_post("/chat", handle_chat)
+    app.router.add_post("/chat/stream", handle_chat_stream)
     app.router.add_post("/command", handle_command)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/session", handle_session_info)

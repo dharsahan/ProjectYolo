@@ -15,6 +15,7 @@
     yoloMode: false,
     thinkMode: false,
     theme: 'dark',
+    selectedFiles: [], // Added for visual chips
   };
 
   // ── DOM refs ──
@@ -27,8 +28,11 @@
     messages: $('#messages'),
     welcome: $('#welcome-screen'),
     input: $('#message-input'),
+    attachmentChips: $('#attachment-chips'), // Added
     sendBtn: $('#send-btn'),
     attachBtn: $('#attach-btn'),
+    fileUpload: $('#file-upload'), // Added explicitly if not there
+    attachMenu: $('#attach-menu'), // Added explicitly if not there
     modeToggle: $('#mode-toggle'),
     statusBar: $('#status-bar'),
     statusText: $('#status-text'),
@@ -56,6 +60,41 @@
   };
 
   // ── Init ──
+  function renderAttachmentChips() {
+    if (!dom.attachmentChips) return;
+    dom.attachmentChips.innerHTML = '';
+    if (state.selectedFiles.length === 0) {
+      dom.attachmentChips.classList.add('hidden');
+      return;
+    }
+    dom.attachmentChips.classList.remove('hidden');
+    state.selectedFiles.forEach((file, index) => {
+      const chip = document.createElement('div');
+      chip.className = 'attachment-chip';
+      chip.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <span class="chip-name">${file.name}</span>
+        <button class="remove-chip" data-index="${index}">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      `;
+      chip.querySelector('.remove-chip').addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.selectedFiles.splice(index, 1);
+        renderAttachmentChips();
+        if (state.selectedFiles.length === 0 && !dom.input.value.trim()) {
+          dom.sendBtn.disabled = true;
+        }
+      });
+      dom.attachmentChips.appendChild(chip);
+    });
+    
+    if (typeof Motion !== 'undefined') {
+      const chips = dom.attachmentChips.querySelectorAll('.attachment-chip');
+      Motion.animate(chips, { opacity: [0, 1], scale: [0.9, 1] }, { duration: 0.2, delay: Motion.stagger(0.05) });
+    }
+  }
+
   function init() {
     loadPrefs();
     applyTheme();
@@ -107,14 +146,17 @@
         label.classList.toggle('yolo', state.yoloMode);
 
         // Update subtitle
-        dom.chatSubtitle.textContent = `${data.history_length} msgs · ${data.total_tokens} tokens · ${data.llm_call_count} LLM calls`;
+        const historyLen = data.history_length || 0;
+        const totalTokens = data.total_tokens || 0;
+        const llmCalls = data.llm_call_count || 0;
+        dom.chatSubtitle.textContent = `${historyLen} MSGS · ${totalTokens} TOKENS · ${llmCalls} LLM CALLS`;
       }
     } catch {}
-    renderMessages();
+    renderMessages(true);
   }
 
   // ── Rendering ──
-  function renderMessages() {
+  function renderMessages(shouldAnimate = false) {
     dom.messages.innerHTML = '';
 
     if (state.messages.length === 0) {
@@ -127,9 +169,9 @@
     });
     scrollToBottom();
 
-    // Apply stagger animation to message elements
+    // Apply stagger animation to message elements ONLY if requested (e.g. on start or initial load)
     const elements = dom.messages.querySelectorAll('.message');
-    if (elements.length > 0 && typeof Motion !== 'undefined') {
+    if (shouldAnimate && elements.length > 0 && typeof Motion !== 'undefined') {
       Motion.animate(
         elements,
         { opacity: [0, 1], y: [20, 0] },
@@ -200,7 +242,30 @@
         try { hljs.highlightElement(block); } catch {}
       });
     } else {
-      content.textContent = msg.content;
+      if (msg.content && msg.content.includes('🎤 [Voice Message attached]')) {
+        content.classList.add('voice-note-bubble');
+        content.innerHTML = `
+          <div class="voice-note-card">
+            <div class="voice-play-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </div>
+            <div class="voice-waveform">
+              <span class="v-bar" style="height: 12px;"></span>
+              <span class="v-bar" style="height: 18px;"></span>
+              <span class="v-bar" style="height: 14px;"></span>
+              <span class="v-bar" style="height: 22px;"></span>
+              <span class="v-bar" style="height: 16px;"></span>
+              <span class="v-bar" style="height: 10px;"></span>
+              <span class="v-bar" style="height: 18px;"></span>
+              <span class="v-bar" style="height: 14px;"></span>
+              <span class="v-bar" style="height: 10px;"></span>
+            </div>
+            <span class="voice-duration">Voice Note</span>
+          </div>
+        `;
+      } else {
+        content.textContent = msg.content;
+      }
     }
 
     wrapper.appendChild(content);
@@ -313,7 +378,7 @@
 
   function hideCommandPalette() { commandPalette.classList.add('hidden'); }
 
-  // ── Send message (with slash-command support) ──
+  // ── Send message (with slash-command support + streaming) ──
   async function sendMessage(text) {
     if (!text || !text.trim() || state.isLoading) return;
     text = text.trim();
@@ -321,34 +386,43 @@
     const slashCmd = parseSlashCommand(text);
 
     // Add user message to local state
-    const userMsg = { role: 'user', content: text, timestamp: Date.now() };
+    const attachedText = state.selectedFiles.length > 0 
+      ? `\n\n[Attached: ${state.selectedFiles.map(f => f.name).join(', ')}]`
+      : '';
+    const fullText = text + attachedText;
+
+    const userMsg = { role: 'user', content: fullText, timestamp: Date.now() };
     state.messages.push(userMsg);
 
     if (dom.messages.querySelector('.welcome-screen')) {
       dom.messages.innerHTML = '';
     }
-    const el = createMessageEl(userMsg);
+    const userEl = createMessageEl(userMsg);
     if (typeof Motion !== 'undefined') {
-      el.style.opacity = '0';
-      el.style.transform = 'translateY(10px)';
+      userEl.style.opacity = '0';
+      userEl.style.transform = 'translateY(10px)';
     }
-    dom.messages.appendChild(el);
+    dom.messages.appendChild(userEl);
     if (typeof Motion !== 'undefined') {
-      Motion.animate(el, { opacity: 1, y: 0 }, { duration: 0.3, easing: [0.2, 0.8, 0.2, 1] });
+      Motion.animate(userEl, { opacity: 1, y: 0 }, { duration: 0.3, easing: [0.2, 0.8, 0.2, 1] });
     }
     scrollToBottom();
 
     dom.input.value = '';
-    dom.input.style.height = 'auto';
+    dom.input.style.height = ''; // Let CSS take over for base height
     dom.sendBtn.disabled = true;
     hideCommandPalette();
 
+    state.selectedFiles = [];
+    renderAttachmentChips();
+
     state.isLoading = true;
-    showTypingIndicator();
 
     try {
       let result;
       if (slashCmd) {
+        // Slash commands use the synchronous path
+        showTypingIndicator();
         result = await window.yoloAPI.runCommand({
           command: slashCmd.command,
           args: slashCmd.args,
@@ -363,29 +437,116 @@
         }
         if (slashCmd.command === 'start') {
           state.messages = [userMsg];
-          renderMessages();
-          return; // Skip appending the generic assistant message below since it resets
+          removeTypingIndicator();
+          renderMessages(true);
+          state.isLoading = false;
+          return;
+        }
+        removeTypingIndicator();
+
+        const response = result.response || result.error || 'No response received.';
+        const assistantMsg = { role: 'assistant', content: response, timestamp: Date.now() };
+        state.messages.push(assistantMsg);
+        const el = createMessageEl(assistantMsg);
+        if (typeof Motion !== 'undefined') {
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(10px)';
+        }
+        dom.messages.appendChild(el);
+        if (typeof Motion !== 'undefined') {
+          Motion.animate(el, { opacity: 1, y: 0 }, { duration: 0.3, easing: [0.2, 0.8, 0.2, 1] });
         }
       } else {
-        result = await window.yoloAPI.sendMessage({
+        // ── Streaming path ──
+        // Create the assistant message bubble immediately (empty)
+        const streamMsg = { role: 'assistant', content: '', timestamp: Date.now() };
+        state.messages.push(streamMsg);
+
+        const streamWrapper = document.createElement('div');
+        streamWrapper.className = 'message assistant';
+        streamWrapper.innerHTML = `<div class="msg-avatar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.28 1.28L3 12l5.8 1.9a2 2 0 0 1 1.28 1.28L12 21l1.9-5.8a2 2 0 0 1 1.28-1.28L21 12l-5.8-1.9a2 2 0 0 1-1.28-1.28Z"/></svg></div>`;
+
+        const streamContent = document.createElement('div');
+        streamContent.className = 'msg-content';
+        streamContent.innerHTML = '<span class="stream-cursor"></span>';
+        streamWrapper.appendChild(streamContent);
+
+        // Status indicator (shows "Executing tools: ..." etc.)
+        const statusEl = document.createElement('div');
+        statusEl.className = 'msg-status-indicator';
+        statusEl.style.display = 'none';
+        streamWrapper.appendChild(statusEl);
+
+        dom.messages.appendChild(streamWrapper);
+
+        if (typeof Motion !== 'undefined') {
+          streamWrapper.style.opacity = '0';
+          streamWrapper.style.transform = 'translateY(10px)';
+          Motion.animate(streamWrapper, { opacity: 1, y: 0 }, { duration: 0.3, easing: [0.2, 0.8, 0.2, 1] });
+        }
+        scrollToBottom();
+
+        let streamedContent = '';
+        let streamDone = false;
+
+        // Listen for streaming events from main process
+        const onStreamEvent = (event) => {
+          const { type, data } = event;
+
+          if (type === 'stream') {
+            // data is the full accumulated content so far
+            streamedContent = data;
+            streamContent.innerHTML = renderMarkdown(streamedContent) + '<span class="stream-cursor"></span>';
+            streamContent.querySelectorAll('pre code').forEach(block => {
+              try { hljs.highlightElement(block); } catch {}
+            });
+            statusEl.style.display = 'none';
+            scrollToBottom();
+          } else if (type === 'status') {
+            statusEl.textContent = data;
+            statusEl.style.display = 'block';
+            scrollToBottom();
+          } else if (type === 'done') {
+            // Final complete response
+            streamedContent = data;
+            streamContent.innerHTML = renderMarkdown(streamedContent);
+            streamContent.querySelectorAll('pre code').forEach(block => {
+              try { hljs.highlightElement(block); } catch {}
+            });
+            statusEl.style.display = 'none';
+            streamMsg.content = streamedContent;
+            streamDone = true;
+          } else if (type === 'error') {
+            streamContent.innerHTML = renderMarkdown(`⚠️ Error: ${data}`);
+            streamMsg.content = `⚠️ Error: ${data}`;
+            streamDone = true;
+          }
+        };
+
+        window.yoloAPI.onChatStreamEvent(onStreamEvent);
+
+        // Fire the streaming request (it runs in background, events come via IPC)
+        const streamPromise = window.yoloAPI.streamChat({
           message: text,
           userId: state.userId,
         });
-      }
 
-      removeTypingIndicator();
+        // Wait for stream to complete
+        await streamPromise;
 
-      const response = result.response || result.error || 'No response received.';
-      const assistantMsg = { role: 'assistant', content: response, timestamp: Date.now() };
-      state.messages.push(assistantMsg);
-      const el = createMessageEl(assistantMsg);
-      if (typeof Motion !== 'undefined') {
-        el.style.opacity = '0';
-        el.style.transform = 'translateY(10px)';
-      }
-      dom.messages.appendChild(el);
-      if (typeof Motion !== 'undefined') {
-        Motion.animate(el, { opacity: 1, y: 0 }, { duration: 0.3, easing: [0.2, 0.8, 0.2, 1] });
+        // Safety: if we didn't get a 'done' event, wait briefly for remaining events
+        if (!streamDone) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        // Cleanup: remove the stream listener
+        window.yoloAPI.removeChatStreamListeners();
+
+        // Add timestamp
+        const ts = document.createElement('div');
+        ts.className = 'msg-timestamp';
+        ts.textContent = formatTime(Date.now());
+        streamWrapper.appendChild(ts);
       }
 
       // Refresh subtitle stats
@@ -412,7 +573,10 @@
     try {
       const data = await window.yoloAPI.getSession({ userId: state.userId });
       if (data) {
-        dom.chatSubtitle.textContent = `${data.history_length} msgs · ${data.total_tokens} tokens · ${data.llm_call_count} LLM calls`;
+        const historyLen = data.history_length || 0;
+        const totalTokens = data.total_tokens || 0;
+        const llmCalls = data.llm_call_count || 0;
+        dom.chatSubtitle.textContent = `${historyLen} MSGS · ${totalTokens} TOKENS · ${llmCalls} LLM CALLS`;
       }
     } catch {}
   }
@@ -432,9 +596,10 @@
     });
 
     dom.input.addEventListener('input', () => {
-      dom.sendBtn.disabled = !dom.input.value.trim();
-      dom.input.style.height = 'auto';
-      dom.input.style.height = Math.min(dom.input.scrollHeight, 150) + 'px';
+      dom.sendBtn.disabled = !dom.input.value.trim() && state.selectedFiles.length === 0;
+      dom.input.style.height = ''; // Reset to base to calculate true scroll height
+      const newHeight = Math.min(dom.input.scrollHeight, 150);
+      dom.input.style.height = newHeight + 'px';
       const val = dom.input.value;
       if (val.startsWith('/') && !val.includes('\n')) {
         showCommandPalette(val.slice(1).split(/\s/)[0]);
@@ -452,14 +617,16 @@
 
     // File Attach
     dom.attachBtn.addEventListener('mousedown', (e) => {
-      e.preventDefault(); 
-      dom.attachMenu.classList.toggle('hidden');
+      e.preventDefault();
+      const isHidden = dom.attachMenu.classList.toggle('hidden');
+      dom.attachBtn.classList.toggle('active', !isHidden);
     });
 
     document.querySelectorAll('.attach-menu-item').forEach(item => {
       item.addEventListener('click', () => {
         dom.input.focus(); // This will expand the bar
         dom.attachMenu.classList.add('hidden');
+        dom.attachBtn.classList.remove('active');
         dom.fileUpload.click();
       });
     });
@@ -469,14 +636,15 @@
       if (dom.attachMenu && !dom.attachMenu.classList.contains('hidden')) {
         if (!dom.attachMenu.contains(e.target) && !dom.attachBtn.contains(e.target)) {
           dom.attachMenu.classList.add('hidden');
+          dom.attachBtn.classList.remove('active');
         }
       }
     });
-
     dom.fileUpload.addEventListener('change', (e) => {
       if (e.target.files && e.target.files.length > 0) {
-        const files = Array.from(e.target.files).map(f => f.name).join(', ');
-        dom.input.value += `[Attached: ${files}] `;
+        const newFiles = Array.from(e.target.files).map(f => ({ name: f.name, size: f.size, type: f.type }));
+        state.selectedFiles = [...state.selectedFiles, ...newFiles];
+        renderAttachmentChips();
         dom.input.focus();
         dom.sendBtn.disabled = false;
       }

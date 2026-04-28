@@ -1,4 +1,5 @@
 import os
+import re
 import select
 import shlex
 import signal
@@ -36,7 +37,7 @@ def _get_int_env(name: str, default: int, min_value: int = 1) -> int:
     return value
 
 
-LOCAL_TIMEOUT_SECONDS = _get_int_env("BASH_TIMEOUT_SECONDS", 60)
+LOCAL_TIMEOUT_SECONDS = _get_int_env("BASH_TIMEOUT_SECONDS", 300)
 DOCKER_TIMEOUT_SECONDS = _get_int_env("DOCKER_BASH_TIMEOUT_SECONDS", 90)
 MAX_OUTPUT_CHARS = _get_int_env("MAX_BASH_OUTPUT_CHARS", 30000)
 TERMINAL_READ_WAIT_MS = _get_int_env("TERMINAL_READ_WAIT_MS", 120, min_value=0)
@@ -56,7 +57,46 @@ _terminal_sessions: dict[str, _TerminalSession] = {}
 _terminal_lock = threading.Lock()
 
 
+# Regex to strip ANSI escape sequences (colors, cursor movement, OSC, etc.)
+_ANSI_RE = re.compile(
+    r"""
+    \x1b        # ESC character
+    (?:         # followed by:
+      \[        #   CSI sequences: ESC [ ... final_byte
+      [0-?]*    #     parameter bytes
+      [ -/]*    #     intermediate bytes
+      [@-~]     #     final byte
+    |
+      \]        #   OSC sequences: ESC ] ... (BEL or ST)
+      [^\x07]*  #     payload
+      (?:\x07|\x1b\\)  # terminated by BEL or ST
+    |
+      [()][AB012]  # Character set selection
+    |
+      [>=]      # Keypad modes
+    |
+      \#\d      # Line height
+    |
+      [A-Z]     # Two-char sequences like ESC M
+    )
+    | \x0f      # SI (Shift In)
+    | \x0e      # SO (Shift Out)
+    | \r        # Carriage return (strip to avoid overwritten lines)
+    """,
+    re.VERBOSE,
+)
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences and control characters from terminal output."""
+    cleaned = _ANSI_RE.sub("", text)
+    # Collapse excessive blank lines (common after stripping prompts)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
 def _trim_output(text: str) -> str:
+    text = _strip_ansi(text)
     if len(text) <= MAX_OUTPUT_CHARS:
         return text
     trimmed = text[:MAX_OUTPUT_CHARS]
@@ -114,7 +154,10 @@ def terminal_start(shell: str = "", cwd: str = "") -> str:
     try:
         import pty
 
-        shell_bin = shell.strip() or os.getenv("SHELL", "/bin/bash")
+        # Default to /bin/bash for reliable PTY interaction.
+        # Fish and exotic shells have PTY ownership issues when spawned
+        # programmatically. Users can still pass shell="fish" explicitly.
+        shell_bin = shell.strip() or "/bin/bash"
         target_cwd = (
             str(resolve_and_verify_path(cwd)) if cwd and cwd.strip() else os.getcwd()
         )
@@ -122,15 +165,37 @@ def terminal_start(shell: str = "", cwd: str = "") -> str:
         if not shell_parts:
             return "Error: Invalid shell command."
 
+        # Build a clean environment to suppress fancy prompts and motd
+        clean_env = os.environ.copy()
+        clean_env["TERM"] = "dumb"
+        clean_env["NO_COLOR"] = "1"
+        clean_env["PS1"] = "$ "
+        clean_env["PS2"] = "> "
+        clean_env.pop("LS_COLORS", None)
+        clean_env.pop("LSCOLORS", None)
+        clean_env.pop("PROMPT_COMMAND", None)
+
+        # Determine shell-specific flags to suppress rc files and greeting
+        shell_base = os.path.basename(shell_parts[0])
+        shell_args = list(shell_parts)
+        if shell_base in ("bash", "sh"):
+            shell_args += ["--norc", "--noprofile"]
+        elif shell_base == "zsh":
+            clean_env["ZDOTDIR"] = "/nonexistent"
+            shell_args += ["--no-rcs", "--no-globalrcs"]
+        elif shell_base == "fish":
+            shell_args += ["--no-config"]
+
         master_fd, slave_fd = pty.openpty()
+
         proc = subprocess.Popen(
-            shell_parts + ["-i"],
+            shell_args,
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
             cwd=target_cwd,
-            env=os.environ.copy(),
-            start_new_session=True,
+            env=clean_env,
+            preexec_fn=os.setsid,
             close_fds=True,
         )
         os.close(slave_fd)
@@ -215,16 +280,42 @@ def terminal_send(
         return f"Error sending terminal input: {e}"
 
 
-def terminal_read(session_id: str, max_chars: int = MAX_OUTPUT_CHARS) -> str:
-    """Read currently available output from a terminal session without sending input."""
+def terminal_read(session_id: str, max_chars: int = MAX_OUTPUT_CHARS, wait_seconds: float = 0) -> str:
+    """Read currently available output from a terminal session without sending input.
+    
+    If wait_seconds > 0, poll repeatedly until output appears or the timeout is reached.
+    This is useful for slow commands (e.g. compilation, package install) where the agent
+    needs to wait for the process to produce output before continuing.
+    """
     try:
         session = _get_session(session_id)
-        out = _read_from_fd(session.master_fd, max(1, max_chars))
+
+        deadline = time.time() + max(0.0, wait_seconds)
+        chunks: list[str] = []
+
+        while True:
+            piece = _read_from_fd(session.master_fd, max(1, max_chars))
+            if piece:
+                chunks.append(piece)
+            # If we have output and no wait, or deadline passed, stop polling
+            if chunks and wait_seconds <= 0:
+                break
+            if time.time() >= deadline:
+                break
+            # If process exited, grab any last output and stop
+            if session.process.poll() is not None:
+                final = _read_from_fd(session.master_fd, max(1, max_chars))
+                if final:
+                    chunks.append(final)
+                break
+            time.sleep(0.1)
+
         status = (
             "running"
             if session.process.poll() is None
             else f"exited({session.process.returncode})"
         )
+        out = "".join(chunks)
         if not out:
             return f"No new output. Session '{session_id}' status={status}."
 
@@ -232,6 +323,26 @@ def terminal_read(session_id: str, max_chars: int = MAX_OUTPUT_CHARS) -> str:
     except Exception as e:
         audit_log("terminal_read", {"session_id": session_id}, "error", str(e))
         return f"Error reading terminal output: {e}"
+
+
+def terminal_list() -> str:
+    """List all active terminal sessions with their status, shell, cwd, and age."""
+    with _terminal_lock:
+        sessions = list(_terminal_sessions.values())
+
+    if not sessions:
+        return "No active terminal sessions."
+
+    lines = [f"Active terminal sessions ({len(sessions)}):"]
+    for sess in sessions:
+        alive = sess.process.poll() is None
+        status = "running" if alive else f"exited({sess.process.returncode})"
+        age = int(time.time() - sess.created_at)
+        lines.append(
+            f"  • {sess.session_id}  status={status}  shell={sess.shell}  "
+            f"cwd={sess.cwd}  age={age}s  pid={sess.process.pid}"
+        )
+    return "\n".join(lines)
 
 
 def terminal_stop(session_id: str, force: bool = False) -> str:
@@ -330,7 +441,7 @@ def terminal_interactive_run(
             )
             transcript.append(f"[INPUT {idx}]\n{user_input}\n{step_output}")
 
-        final_read = terminal_read(session_id=session_id)
+        final_read = terminal_read(session_id=session_id, wait_seconds=2)
         if not final_read.startswith("No new output"):
             transcript.append(f"[FINAL_READ]\n{final_read}")
 
@@ -403,7 +514,12 @@ def run_bash_locally(command: str) -> str:
         )
     except subprocess.TimeoutExpired:
         audit_log("run_bash_local", {"command": command}, "error", "Timeout")
-        return f"Error: Command timed out after {LOCAL_TIMEOUT_SECONDS} seconds."
+        return (
+            f"Error: Command timed out after {LOCAL_TIMEOUT_SECONDS} seconds. "
+            f"For long-running commands (npm install, git clone, docker build, compilation), "
+            f"use `terminal_start` + `terminal_send` + `terminal_read(wait_seconds=N)` instead "
+            f"to avoid timeouts and monitor progress."
+        )
     except Exception as e:
         audit_log("run_bash_local", {"command": command}, "error", str(e))
         return f"{type(e).__name__}: {e}"

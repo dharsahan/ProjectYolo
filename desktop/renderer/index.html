@@ -136,7 +136,10 @@
                 d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           </button>
-          <textarea id="message-input" placeholder="Type a message..." rows="1" autofocus></textarea>
+          <div class="input-center-stack">
+            <div id="attachment-chips" class="attachment-chips hidden"></div>
+            <textarea id="message-input" placeholder="Type a message..." rows="1" spellcheck="false" autofocus></textarea>
+          </div>
           <div id="recording-indicator" class="recording-indicator hidden">
             <div class="recording-divider"></div>
             <button id="cancel-voice-btn" class="input-icon-btn cancel-voice-btn" title="Cancel recording">
@@ -213,6 +216,8 @@
       </div>
     </div>
     <!-- ═══════════════ WORKERS PANEL ═══════════════ -->
+  
+    
     <div id="workers-panel" class="workers-panel hidden">
       <div class="workers-header">
         <h2>Background Workers</h2>
@@ -245,9 +250,9 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <script src="app.js"></script>
+    
+<script src="app.js"></script>
 </body>
 
 </html>

@@ -85,7 +85,13 @@ def _load_prompt_template(name: str) -> Optional[str]:
         value = _PROMPT_TEMPLATE_CACHE[name]
         return value or None
 
-    path = PROMPTS_DIR / f"{name}.md"
+    # Check user override directory first
+    from tools.base import YOLO_HOME
+    user_prompts_dir = YOLO_HOME / "prompts"
+    user_path = user_prompts_dir / f"{name}.md"
+    
+    path = user_path if user_path.exists() else (PROMPTS_DIR / f"{name}.md")
+    
     try:
         content = path.read_text(encoding="utf-8").strip()
     except Exception:
@@ -1080,6 +1086,7 @@ async def execute_tool_direct(
         "terminal_start": lambda **kw: tools.terminal_start(**kw),
         "terminal_send": lambda **kw: tools.terminal_send(**kw),
         "terminal_read": lambda **kw: tools.terminal_read(**kw),
+        "terminal_list": lambda **kw: tools.terminal_list(**kw),
         "terminal_stop": lambda **kw: tools.terminal_stop(**kw),
         "list_skills": lambda **kw: tools.list_skills(**kw),
         "read_skill": lambda **kw: tools.read_skill(**kw),

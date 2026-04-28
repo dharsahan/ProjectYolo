@@ -93,6 +93,60 @@ ipcMain.handle('run-command', async (_event, { command, args, userId }) => {
   }
 });
 
+// Streaming chat: opens SSE connection to /chat/stream and relays events to renderer
+ipcMain.handle('stream-chat', async (_event, { message, userId }) => {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, user_id: userId || 1 }),
+    });
+
+    if (!resp.ok) {
+      const errBody = await resp.text();
+      mainWindow?.webContents?.send('chat-stream-event', { type: 'error', data: errBody });
+      return { error: errBody };
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Parse SSE events from buffer
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop(); // keep incomplete chunk
+
+      for (const part of parts) {
+        const lines = part.split('\n');
+        let eventType = 'message';
+        let data = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) eventType = line.slice(7);
+          else if (line.startsWith('data: ')) data = line.slice(6);
+        }
+        if (data) {
+          try {
+            const parsed = JSON.parse(data);
+            mainWindow?.webContents?.send('chat-stream-event', { type: eventType, data: parsed });
+          } catch {
+            mainWindow?.webContents?.send('chat-stream-event', { type: eventType, data });
+          }
+        }
+      }
+    }
+    return { ok: true };
+  } catch (err) {
+    mainWindow?.webContents?.send('chat-stream-event', { type: 'error', data: err.message });
+    return { error: err.message };
+  }
+});
+
 // ── App lifecycle ──
 
 app.whenReady().then(() => {
