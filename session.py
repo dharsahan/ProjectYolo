@@ -94,18 +94,17 @@ class SessionManager:
             return
         session = self.sessions[user_id]
 
-        # Cheap signature: history length + last message identity + last message content length
+        # Cheap signature: history length + JSON hash of last message
         # + flags + pending confirmations count. This catches all real mutations without
         # serializing the entire history just to hash it.
+        import json
         last_msg = session.message_history[-1] if session.message_history else {}
-        last_msg_id = id(last_msg)
-        last_msg_content_len = len(str(last_msg.get("content", "")))
+        last_msg_hash = hash(json.dumps(last_msg, sort_keys=True))
         
         signature = hash(
             (
                 len(session.message_history),
-                last_msg_id,
-                last_msg_content_len,
+                last_msg_hash,
                 session.yolo_mode,
                 session.think_mode,
                 session.think_mode_policy,

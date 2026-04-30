@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 """
 Local Codebase RAG operations.
 Indexes the workspace into a local Qdrant vector database and allows semantic search.
@@ -96,6 +97,7 @@ def _chunk_text(text: str, chunk_size: int = 1500, overlap: int = 200) -> List[s
     return chunks
 
 
+@register_tool()
 def codebase_index() -> str:
     """
     Recursively scans the current workspace, chunks text files, generates OpenAI embeddings,
@@ -217,6 +219,7 @@ def codebase_index() -> str:
         return f"Error indexing codebase: {e}"
 
 
+@register_tool()
 def codebase_search(query: str, limit: int = 5) -> str:
     """
     Search the codebase using semantic similarity.

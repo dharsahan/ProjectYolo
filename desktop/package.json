@@ -12,5 +12,10 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^33.0.0"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "marked": "^18.0.2",
+    "motion": "^12.38.0"
   }
 }

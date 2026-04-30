@@ -1,7 +1,9 @@
+from tools.registry import register_tool
 from tools.database_ops import add_cron, list_crons, delete_cron
 from tools.base import audit_log
 
 
+@register_tool()
 def schedule_daily_task(user_id: int, task_description: str) -> str:
     """Schedule a recurring daily task (every 24 hours)."""
     try:
@@ -18,6 +20,7 @@ def schedule_daily_task(user_id: int, task_description: str) -> str:
         return f"Error scheduling daily task: {e}"
 
 
+@register_tool()
 def schedule_task(user_id: int, task_description: str, interval_minutes: int) -> str:
     """Schedule a recurring autonomous task."""
     try:
@@ -36,6 +39,7 @@ def schedule_task(user_id: int, task_description: str, interval_minutes: int) ->
         return f"Error scheduling task: {e}"
 
 
+@register_tool()
 def get_scheduled_tasks(user_id: int) -> str:
     """List all currently active scheduled tasks."""
     try:
@@ -53,6 +57,7 @@ def get_scheduled_tasks(user_id: int) -> str:
         return f"Error listing tasks: {e}"
 
 
+@register_tool()
 def cancel_scheduled_task(cron_id: int) -> str:
     """Permanently stop and delete a scheduled task by its ID."""
     try:

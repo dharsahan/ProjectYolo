@@ -1,7 +1,9 @@
+from tools.registry import register_tool
 from tools.base import audit_log
 from tools.memory_service import get_memory
 
 
+@register_tool()
 def learn_experience(user_id: int, task: str, error: str, resolution: str) -> str:
     """Record a technical error and how it was successfully resolved for future reference."""
     try:
@@ -25,6 +27,7 @@ def learn_experience(user_id: int, task: str, error: str, resolution: str) -> st
         return f"Error archiving experience: {e}"
 
 
+@register_tool()
 def list_experiences(user_id: int) -> str:
     """Retrieve all technical engineering experiences/lessons learned."""
     try:

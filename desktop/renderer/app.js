@@ -11,17 +11,23 @@
   const state = {
     userId: 1,
     messages: [],       // { role, content, timestamp }
+    sessions: [],       // [{ user_id, last_active }]
     isLoading: false,
     yoloMode: false,
     thinkMode: false,
     theme: 'dark',
     selectedFiles: [], // Added for visual chips
+    activePaletteIndex: -1, // Added for keyboard navigation
+    workerStates: {}, // Track task_id -> status
   };
 
   // ── DOM refs ──
   const $ = (sel) => document.querySelector(sel);
   const dom = {
     app: $('#app'),
+    sidebar: $('#sidebar'),
+    sessionList: $('#session-list'),
+    newChatBtn: $('#new-chat-btn'),
     chatTitle: $('#chat-title'),
     chatSubtitle: $('#chat-subtitle'),
     messagesContainer: $('#messages-container'),
@@ -57,6 +63,7 @@
     cancelVoiceBtn: $('#cancel-voice-btn'),
     recordingTime: $('.recording-time'),
     attachMenu: $('#attach-menu'),
+    stopBtn: $('#stop-btn'),
   };
 
   // ── Init ──
@@ -100,6 +107,54 @@
     applyTheme();
     bindEvents();
     pollHealth(); // Detects user_id from backend, then hydrates session
+    pollWorkers(); // Start background worker polling for notifications
+    fetchSessions(); // Load session history
+  }
+
+  async function fetchSessions() {
+    try {
+      const data = await window.yoloAPI.getSessions();
+      if (data && data.sessions) {
+        state.sessions = data.sessions;
+        renderSessions();
+      }
+    } catch {}
+  }
+
+  function renderSessions() {
+    if (!dom.sessionList) return;
+    dom.sessionList.innerHTML = '';
+    
+    // If no sessions, show a placeholder
+    if (state.sessions.length === 0) {
+      dom.sessionList.innerHTML = '<div style="padding:20px; text-align:center; color:var(--text-muted); font-size:12px;">No history yet</div>';
+      return;
+    }
+
+    state.sessions.forEach(s => {
+      const item = document.createElement('div');
+      item.className = `session-item ${s.user_id === state.userId ? 'active' : ''}`;
+      item.dataset.id = s.user_id;
+      
+      const lastActive = new Date(s.last_active);
+      const timeStr = lastActive.toLocaleDateString() === new Date().toLocaleDateString()
+        ? formatTime(lastActive)
+        : lastActive.toLocaleDateString();
+
+      item.innerHTML = `
+        <div class="session-name">Session ${s.user_id}</div>
+        <div class="session-meta">${timeStr}</div>
+      `;
+      
+      item.addEventListener('click', () => {
+        if (state.userId === s.user_id) return;
+        state.userId = s.user_id;
+        savePrefs();
+        hydrateFromSession();
+      });
+      
+      dom.sessionList.appendChild(item);
+    });
   }
 
   function loadPrefs() {
@@ -145,26 +200,45 @@
         label.textContent = state.yoloMode ? 'YOLO' : 'Safe';
         label.classList.toggle('yolo', state.yoloMode);
 
-        // Update subtitle
+        // Update title/subtitle
+        dom.chatTitle.textContent = `Session ${state.userId}`;
         const historyLen = data.history_length || 0;
         const totalTokens = data.total_tokens || 0;
         const llmCalls = data.llm_call_count || 0;
         dom.chatSubtitle.textContent = `${historyLen} MSGS · ${totalTokens} TOKENS · ${llmCalls} LLM CALLS`;
+        
+        // Refresh sidebar to update active item
+        fetchSessions();
       }
     } catch {}
     renderMessages(true);
   }
 
   // ── Rendering ──
-  function renderMessages(shouldAnimate = false) {
+  function renderMessages(shouldAnimate = false, filterQuery = '') {
     dom.messages.innerHTML = '';
+
+    const query = (filterQuery || '').toLowerCase().trim();
+    const filteredMessages = query 
+      ? state.messages.filter(m => m.content.toLowerCase().includes(query))
+      : state.messages;
 
     if (state.messages.length === 0) {
       dom.messages.appendChild(createWelcomeScreen());
       return;
     }
 
-    state.messages.forEach(msg => {
+    if (query && filteredMessages.length === 0) {
+      const div = document.createElement('div');
+      div.style.padding = '40px';
+      div.style.textAlign = 'center';
+      div.style.color = 'var(--text-muted)';
+      div.textContent = `No messages matching "${filterQuery}"`;
+      dom.messages.appendChild(div);
+      return;
+    }
+
+    filteredMessages.forEach(msg => {
       dom.messages.appendChild(createMessageEl(msg));
     });
     scrollToBottom();
@@ -225,6 +299,23 @@
     return div;
   }
 
+  function appendMessageActions(wrapper, msgObj) {
+    const actions = document.createElement('div');
+    actions.className = 'message-actions';
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'msg-action-btn copy-btn';
+    copyBtn.title = 'Copy to clipboard';
+    copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(msgObj.content);
+      const originalIcon = copyBtn.innerHTML;
+      copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+      setTimeout(() => { copyBtn.innerHTML = originalIcon; }, 2000);
+    });
+    actions.appendChild(copyBtn);
+    wrapper.insertBefore(actions, wrapper.querySelector('.msg-timestamp') || null);
+  }
+
   function createMessageEl(msg) {
     const wrapper = document.createElement('div');
     wrapper.className = `message ${msg.role}`;
@@ -269,6 +360,10 @@
     }
 
     wrapper.appendChild(content);
+
+    if (msg.role === 'assistant') {
+      appendMessageActions(wrapper, msg);
+    }
 
     if (msg.timestamp) {
       const ts = document.createElement('div');
@@ -349,9 +444,15 @@
     const matches = SLASH_COMMANDS.filter(c =>
       c.cmd.includes(query) || c.desc.toLowerCase().includes(query)
     );
-    if (matches.length === 0) { commandPalette.classList.add('hidden'); return; }
-    commandPalette.innerHTML = matches.map(c => `
-      <div class="cmd-option" data-cmd="${c.cmd}" data-has-args="${!!c.hasArgs}">
+    if (matches.length === 0) { 
+      hideCommandPalette();
+      return; 
+    }
+    
+    state.activePaletteIndex = 0; // Reset to top when showing/filtering
+    
+    commandPalette.innerHTML = matches.map((c, i) => `
+      <div class="cmd-option ${i === state.activePaletteIndex ? 'active' : ''}" data-cmd="${c.cmd}" data-has-args="${!!c.hasArgs}">
         <span class="cmd-icon">${c.icon}</span>
         <div class="cmd-info">
           <span class="cmd-name">/${c.cmd}${c.hint ? ' <span class="cmd-hint">' + c.hint + '</span>' : ''}</span>
@@ -361,22 +462,44 @@
     `).join('');
     commandPalette.classList.remove('hidden');
 
-    commandPalette.querySelectorAll('.cmd-option').forEach(opt => {
+    commandPalette.querySelectorAll('.cmd-option').forEach((opt, index) => {
       opt.addEventListener('click', () => {
-        const cmd = opt.dataset.cmd;
-        if (opt.dataset.hasArgs === 'true') {
-          dom.input.value = `/${cmd} `;
-          dom.input.focus();
-        } else {
-          dom.input.value = `/${cmd}`;
-          sendMessage(`/${cmd}`);
-        }
-        commandPalette.classList.add('hidden');
+        selectPaletteOption(index);
       });
     });
   }
 
-  function hideCommandPalette() { commandPalette.classList.add('hidden'); }
+  function updatePaletteSelection() {
+    const options = commandPalette.querySelectorAll('.cmd-option');
+    options.forEach((opt, i) => {
+      opt.classList.toggle('active', i === state.activePaletteIndex);
+    });
+    // Ensure selected option is visible
+    if (options[state.activePaletteIndex]) {
+      options[state.activePaletteIndex].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function selectPaletteOption(index) {
+    const options = commandPalette.querySelectorAll('.cmd-option');
+    const opt = options[index];
+    if (!opt) return;
+    
+    const cmd = opt.dataset.cmd;
+    if (opt.dataset.hasArgs === 'true') {
+      dom.input.value = `/${cmd} `;
+      dom.input.focus();
+    } else {
+      dom.input.value = `/${cmd}`;
+      sendMessage(`/${cmd}`);
+    }
+    hideCommandPalette();
+  }
+
+  function hideCommandPalette() { 
+    commandPalette.classList.add('hidden'); 
+    state.activePaletteIndex = -1;
+  }
 
   // ── Send message (with slash-command support + streaming) ──
   async function sendMessage(text) {
@@ -390,6 +513,7 @@
       ? `\n\n[Attached: ${state.selectedFiles.map(f => f.name).join(', ')}]`
       : '';
     const fullText = text + attachedText;
+    const attachments = state.selectedFiles.map(f => ({ name: f.name, content: f.content }));
 
     const userMsg = { role: 'user', content: fullText, timestamp: Date.now() };
     state.messages.push(userMsg);
@@ -417,6 +541,8 @@
     renderAttachmentChips();
 
     state.isLoading = true;
+    dom.stopBtn.classList.remove('hidden');
+    dom.voiceBtn.classList.add('hidden');
 
     try {
       let result;
@@ -427,7 +553,15 @@
           command: slashCmd.command,
           args: slashCmd.args,
           userId: state.userId,
+          attachments: attachments,
         });
+
+        if (result && result.status === 'needs_confirmation') {
+          const confirmedIdx = await window.yoloAPI.showConfirmationDialog(result);
+          const confirmed = (confirmedIdx === 0);
+          result = await window.yoloAPI.confirmAction({ confirmed, userId: state.userId });
+        }
+
         // Sync UI state for mode/think/start
         if (slashCmd.command === 'mode' && slashCmd.args.length) {
           const m = slashCmd.args[0].toLowerCase();
@@ -440,6 +574,8 @@
           removeTypingIndicator();
           renderMessages(true);
           state.isLoading = false;
+          dom.stopBtn.classList.add('hidden');
+          dom.voiceBtn.classList.remove('hidden');
           return;
         }
         removeTypingIndicator();
@@ -506,6 +642,41 @@
             statusEl.textContent = data;
             statusEl.style.display = 'block';
             scrollToBottom();
+          } else if (type === 'tool_call') {
+            const toolMsg = document.createElement('div');
+            toolMsg.className = 'msg-tool-call';
+            toolMsg.innerHTML = `<strong>Tool:</strong> <code>${data.name}</code>`;
+            if (data.args && Object.keys(data.args).length > 0) {
+              toolMsg.innerHTML += `<div class="tool-args">${JSON.stringify(data.args)}</div>`;
+            }
+            streamWrapper.insertBefore(toolMsg, statusEl);
+            scrollToBottom();
+          } else if (type === 'tool_result') {
+            const resultMsg = document.createElement('div');
+            resultMsg.className = 'msg-tool-result';
+            const resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
+            resultMsg.innerHTML = `<details><summary>Result from <code>${data.name}</code></summary><pre><code>${escapeHtml(resultText)}</code></pre></details>`;
+            streamWrapper.insertBefore(resultMsg, statusEl);
+            scrollToBottom();
+          } else if (type === 'needs_confirmation') {
+            // Phase 2: Native HITL UI
+            streamDone = true;
+            (async () => {
+              const confirmedIdx = await window.yoloAPI.showConfirmationDialog(data);
+              const confirmed = (confirmedIdx === 0);
+              const finalResult = await window.yoloAPI.confirmAction({ confirmed, userId: state.userId });
+              
+              const finalResponse = finalResult.response || finalResult.error || 'No response received.';
+              streamContent.innerHTML = renderMarkdown(finalResponse);
+              streamContent.querySelectorAll('pre code').forEach(block => {
+                try { hljs.highlightElement(block); } catch {}
+              });
+              statusEl.style.display = 'none';
+              streamMsg.content = finalResponse;
+              appendMessageActions(streamWrapper, streamMsg);
+              refreshSessionMeta();
+              scrollToBottom();
+            })();
           } else if (type === 'done') {
             // Final complete response
             streamedContent = data;
@@ -515,6 +686,7 @@
             });
             statusEl.style.display = 'none';
             streamMsg.content = streamedContent;
+            appendMessageActions(streamWrapper, streamMsg);
             streamDone = true;
           } else if (type === 'error') {
             streamContent.innerHTML = renderMarkdown(`⚠️ Error: ${data}`);
@@ -529,6 +701,7 @@
         const streamPromise = window.yoloAPI.streamChat({
           message: text,
           userId: state.userId,
+          attachments: attachments,
         });
 
         // Wait for stream to complete
@@ -549,8 +722,9 @@
         streamWrapper.appendChild(ts);
       }
 
-      // Refresh subtitle stats
+      // Refresh subtitle stats and sidebar
       refreshSessionMeta();
+      fetchSessions();
       scrollToBottom();
     } catch (err) {
       removeTypingIndicator();
@@ -560,6 +734,8 @@
       scrollToBottom();
     } finally {
       state.isLoading = false;
+      dom.stopBtn.classList.add('hidden');
+      dom.voiceBtn.classList.remove('hidden');
     }
   }
 
@@ -586,13 +762,42 @@
     dom.sendBtn.addEventListener('click', () => {
       if (!dom.recordingIndicator.classList.contains('hidden')) {
         toggleRecording(false);
-        sendMessage("🎤 [Voice Message attached]");
       } else {
         sendMessage(dom.input.value);
       }
     });
     dom.input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(dom.input.value); }
+      const isPaletteVisible = !commandPalette.classList.contains('hidden');
+      const paletteOptions = commandPalette.querySelectorAll('.cmd-option');
+
+      if (isPaletteVisible && paletteOptions.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          state.activePaletteIndex = (state.activePaletteIndex + 1) % paletteOptions.length;
+          updatePaletteSelection();
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          state.activePaletteIndex = (state.activePaletteIndex - 1 + paletteOptions.length) % paletteOptions.length;
+          updatePaletteSelection();
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          selectPaletteOption(state.activePaletteIndex);
+          return;
+        }
+        if (e.key === 'Escape') {
+          hideCommandPalette();
+          return;
+        }
+      }
+
+      if (e.key === 'Enter' && !e.shiftKey) { 
+        e.preventDefault(); 
+        sendMessage(dom.input.value); 
+      }
     });
 
     dom.input.addEventListener('input', () => {
@@ -613,6 +818,16 @@
     dom.modeToggle.addEventListener('click', () => {
       const newMode = state.yoloMode ? 'safe' : 'yolo';
       sendMessage(`/mode ${newMode}`);
+    });
+
+    dom.newChatBtn.addEventListener('click', () => {
+      // Find a new unused user ID or just pick a high one
+      const maxId = state.sessions.reduce((max, s) => Math.max(max, s.user_id), 0);
+      state.userId = maxId + 1;
+      state.messages = [];
+      savePrefs();
+      hydrateFromSession();
+      dom.input.focus();
     });
 
     // File Attach
@@ -640,9 +855,24 @@
         }
       }
     });
-    dom.fileUpload.addEventListener('change', (e) => {
+    dom.fileUpload.addEventListener('change', async (e) => {
       if (e.target.files && e.target.files.length > 0) {
-        const newFiles = Array.from(e.target.files).map(f => ({ name: f.name, size: f.size, type: f.type }));
+        const files = Array.from(e.target.files);
+        const newFiles = await Promise.all(files.map(async f => {
+          return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              resolve({ 
+                name: f.name, 
+                size: f.size, 
+                type: f.type,
+                content: event.target.result 
+              });
+            };
+            // Read as text for simplicity in this phase; can be expanded to Base64 for binary
+            reader.readAsText(f);
+          });
+        }));
         state.selectedFiles = [...state.selectedFiles, ...newFiles];
         renderAttachmentChips();
         dom.input.focus();
@@ -654,6 +884,8 @@
     // Voice Recording State
     let recordingTimer;
     let recordingSeconds = 0;
+    let mediaRecorder = null;
+    let audioChunks = [];
 
     function startRecordingTimer() {
       recordingSeconds = 0;
@@ -670,16 +902,58 @@
       clearInterval(recordingTimer);
     }
 
-    function toggleRecording(start) {
+    async function toggleRecording(start) {
       if (start) {
-        dom.input.parentElement.classList.add('expanded');
-        dom.voiceBtn.classList.add('recording');
-        dom.voiceBtn.classList.add('hidden'); // Hide voice button while recording
-        dom.recordingIndicator.classList.remove('hidden');
-        dom.input.classList.add('hidden');
-        dom.sendBtn.disabled = false; // Ensure send is clickable
-        startRecordingTimer();
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              audioChunks.push(event.data);
+            }
+          };
+
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            
+            // Convert blob to Base64
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = async () => {
+              const base64data = reader.result.split(',')[1];
+              
+              // Call transcription bridge
+              const res = await window.yoloAPI.transcribe({ audio: base64data });
+              if (res && res.text) {
+                sendMessage(res.text);
+              } else if (res && res.error) {
+                console.error("Transcription error:", res.error);
+                sendMessage("🎤 [Voice Message Transcription Failed]");
+              }
+            };
+            
+            // Stop all tracks to release microphone
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          mediaRecorder.start();
+          dom.input.parentElement.classList.add('expanded');
+          dom.voiceBtn.classList.add('recording');
+          dom.voiceBtn.classList.add('hidden'); // Hide voice button while recording
+          dom.recordingIndicator.classList.remove('hidden');
+          dom.input.classList.add('hidden');
+          dom.sendBtn.disabled = false; // Ensure send is clickable
+          startRecordingTimer();
+        } catch (err) {
+          console.error("Error accessing microphone:", err);
+          alert("Could not access microphone. Please check permissions.");
+        }
       } else {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+        }
         dom.input.parentElement.classList.remove('expanded');
         dom.voiceBtn.classList.remove('recording');
         dom.voiceBtn.classList.remove('hidden');
@@ -689,6 +963,10 @@
         stopRecordingTimer();
       }
     }
+
+    dom.stopBtn.addEventListener('click', () => {
+      window.yoloAPI.abortChatStream();
+    });
 
     dom.voiceBtn.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -711,9 +989,6 @@
     // Workers
     dom.workersToggleBtn.addEventListener('click', () => {
       dom.workersPanel.classList.toggle('hidden');
-      if (!dom.workersPanel.classList.contains('hidden')) {
-        pollWorkers();
-      }
     });
     dom.closeWorkers.addEventListener('click', () => {
       dom.workersPanel.classList.add('hidden');
@@ -777,7 +1052,7 @@
     const labels = {
       connected: 'Connected — session shared with Telegram & CLI',
       connecting: 'Connecting to Yolo agent...',
-      disconnected: 'Agent offline — start the bridge',
+      disconnected: 'Starting engine...',
     };
     dom.statusText.textContent = labels[status] || labels.connecting;
     if (status === 'connected') setTimeout(() => dom.statusBar.classList.add('hidden'), 3000);
@@ -788,8 +1063,58 @@
   function renderMarkdown(text) {
     if (!text) return '';
     try {
-      if (typeof marked !== 'undefined') { marked.setOptions({ breaks: true, gfm: true }); return marked.parse(text); }
-    } catch {}
+      if (typeof marked !== 'undefined') {
+        const mathBlocks = [];
+        const mathInline = [];
+
+        // 1. Protect block math $$...$$ and \[...\]
+        let processedText = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
+          mathBlocks.push(formula);
+          return `@@MATH_BLOCK_${mathBlocks.length - 1}@@`;
+        });
+        processedText = processedText.replace(/\\\[([\s\S]+?)\\\]/g, (match, formula) => {
+          mathBlocks.push(formula);
+          return `@@MATH_BLOCK_${mathBlocks.length - 1}@@`;
+        });
+
+        // 2. Protect inline math $...$ and \(...\)
+        processedText = processedText.replace(/\\\(([\s\S]+?)\\\)/g, (match, formula) => {
+          mathInline.push(formula);
+          return `@@MATH_INLINE_${mathInline.length - 1}@@`;
+        });
+        // Regex ensures it doesn't match single $ used for currency or within words
+        processedText = processedText.replace(/(^|[^\\])\$([^\$\n]+?)\$/g, (match, prefix, formula) => {
+          mathInline.push(formula);
+          return `${prefix}@@MATH_INLINE_${mathInline.length - 1}@@`;
+        });
+
+        marked.setOptions({ breaks: true, gfm: true });
+        let html = marked.parse(processedText);
+
+        // 3. Restore and render math with KaTeX
+        if (typeof katex !== 'undefined') {
+          html = html.replace(/@@MATH_BLOCK_(\d+)@@/g, (match, index) => {
+            try {
+              return '<div class="math-block">' + katex.renderToString(mathBlocks[index], { displayMode: true, throwOnError: false }) + '</div>';
+            } catch (e) {
+              return '$$' + mathBlocks[index] + '$$';
+            }
+          });
+
+          html = html.replace(/@@MATH_INLINE_(\d+)@@/g, (match, index) => {
+            try {
+              return katex.renderToString(mathInline[index], { displayMode: false, throwOnError: false });
+            } catch (e) {
+              return '$' + mathInline[index] + '$';
+            }
+          });
+        }
+
+        return html;
+      }
+    } catch (err) {
+      console.error('Markdown error:', err);
+    }
     return escapeHtml(text).replace(/\n/g, '<br>');
   }
 
@@ -801,17 +1126,35 @@
 
   // ── Workers Logic ──
   function pollWorkers() {
-    if (dom.workersPanel.classList.contains('hidden')) return;
+    window.yoloAPI.fetchWorkers(state.userId)
+      .then(res => {
+        if (res.workers) {
+          // Detect status changes for notifications
+          res.workers.forEach(w => {
+            const prevStatus = state.workerStates[w.task_id];
+            if (prevStatus && prevStatus !== w.status) {
+              if (w.status === 'completed' || w.status === 'failed') {
+                window.yoloAPI.showNotification(
+                  `Worker ${w.status === 'completed' ? 'Finished' : 'Failed'}`,
+                  `Task ${w.task_id}: ${w.objective}`
+                );
+              }
+            }
+            state.workerStates[w.task_id] = w.status;
+          });
 
-    if (state.activeWorkerId) {
-      fetchWorkerSession(state.activeWorkerId).catch(e => console.error(e));
-    } else {
-      window.yoloAPI.fetchWorkers(state.userId)
-        .then(res => { if (res.workers) renderWorkersList(res.workers); })
-        .catch(e => console.error(e));
-    }
+          if (!dom.workersPanel.classList.contains('hidden')) {
+            if (state.activeWorkerId) {
+              fetchWorkerSession(state.activeWorkerId).catch(e => console.error(e));
+            } else {
+              renderWorkersList(res.workers);
+            }
+          }
+        }
+      })
+      .catch(e => console.error("Worker poll failed", e));
 
-    setTimeout(pollWorkers, 2000);
+    setTimeout(pollWorkers, 3000);
   }
 
   function renderWorkersList(workers) {

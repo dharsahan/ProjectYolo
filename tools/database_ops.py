@@ -113,11 +113,23 @@ def init_db():
             )
         """)
 
-        # Lightweight migration for existing databases.
-        _ensure_column_exists(conn, "sessions", "think_mode", "BOOLEAN")
-        _ensure_column_exists(conn, "sessions", "think_mode_policy", "TEXT")
-        _ensure_column_exists(conn, "sessions", "pending_confirmation", "TEXT")
-        _ensure_column_exists(conn, "background_tasks", "history", "TEXT")
+        # Migrations
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1")
+        row = cursor.fetchone()
+        current_version = row[0] if row else 0
+
+        if current_version < 1:
+            _ensure_column_exists(conn, "sessions", "think_mode", "BOOLEAN")
+            _ensure_column_exists(conn, "sessions", "think_mode_policy", "TEXT")
+            _ensure_column_exists(conn, "sessions", "pending_confirmation", "TEXT")
+            _ensure_column_exists(conn, "background_tasks", "history", "TEXT")
+            cursor.execute("INSERT INTO schema_migrations (version) VALUES (1)")
 
 
 def add_cron(user_id: int, task_description: str, interval_minutes: int):
@@ -217,6 +229,15 @@ def save_session(
                 pending_confirmations_json,
             ),
         )
+
+
+def list_sessions():
+    with _conn_ctx() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT user_id, last_active FROM sessions ORDER BY last_active DESC"
+        )
+        return cursor.fetchall()
 
 
 def load_session(user_id: int):

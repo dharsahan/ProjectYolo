@@ -1,6 +1,8 @@
+from tools.registry import register_tool
 from tools.base import YOLO_SKILLS, audit_log
 
 
+@register_tool()
 def self_upgrade_summary(
     user_id: int,
     feature_name: str,
@@ -38,6 +40,7 @@ def self_upgrade_summary(
         return f"Error archiving self-upgrade summary: {e}"
 
 
+@register_tool()
 def optimize_skill(name: str, improvements: str) -> str:
     """Rewrite an existing skill manual with new improvements based on experience."""
     try:
@@ -60,6 +63,7 @@ def optimize_skill(name: str, improvements: str) -> str:
         return f"Error optimizing skill: {e}"
 
 
+@register_tool()
 def archive_proactive_memory(user_id: int, insight: str) -> str:
     """Save an important technical insight immediately during a task."""
     try:

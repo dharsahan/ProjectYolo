@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 import datetime
 import json
 import os
@@ -33,6 +34,7 @@ def _truncate_content(content: str, limit: int = MAX_READ_CHARS) -> str:
     )
 
 
+@register_tool()
 def read_file(path: str, confirm_func: Optional[Callable] = None) -> str:
     try:
         resolved = resolve_and_verify_path(path, confirm_func)
@@ -47,6 +49,7 @@ def read_file(path: str, confirm_func: Optional[Callable] = None) -> str:
         return f"{type(e).__name__}: {e}"
 
 
+@register_tool()
 def write_file(path: str, content: str, confirm_func: Optional[Callable] = None) -> str:
     try:
         resolved = resolve_and_verify_path(path, confirm_func)
@@ -63,6 +66,7 @@ def write_file(path: str, content: str, confirm_func: Optional[Callable] = None)
         return f"{type(e).__name__}: {e}"
 
 
+@register_tool()
 def edit_file(
     path: str, old_text: str, new_text: str, confirm_func: Optional[Callable] = None
 ) -> str:
@@ -90,6 +94,7 @@ def edit_file(
         return f"{type(e).__name__}: {e}"
 
 
+@register_tool()
 def delete_file(path: str, confirm_func: Optional[Callable] = None) -> str:
     try:
         resolved = resolve_and_verify_path(path, confirm_func)
@@ -111,6 +116,7 @@ def delete_file(path: str, confirm_func: Optional[Callable] = None) -> str:
         return f"{type(e).__name__}: {e}"
 
 
+@register_tool()
 def copy_file(src: str, dest: str, confirm_func: Optional[Callable] = None) -> str:
     try:
         s_resolved = resolve_and_verify_path(src, confirm_func)
@@ -135,6 +141,7 @@ def copy_file(src: str, dest: str, confirm_func: Optional[Callable] = None) -> s
         return f"{type(e).__name__}: {e}"
 
 
+@register_tool()
 def move_file(src: str, dest: str, confirm_func: Optional[Callable] = None) -> str:
     try:
         s_resolved = resolve_and_verify_path(src, confirm_func)
@@ -156,6 +163,7 @@ def move_file(src: str, dest: str, confirm_func: Optional[Callable] = None) -> s
         return f"{type(e).__name__}: {e}"
 
 
+@register_tool()
 def list_dir(path: str = ".", confirm_func: Optional[Callable] = None) -> str:
     try:
         resolved = resolve_and_verify_path(path, confirm_func)
@@ -174,6 +182,7 @@ def list_dir(path: str = ".", confirm_func: Optional[Callable] = None) -> str:
         return f"{type(e).__name__}: {e}"
 
 
+@register_tool()
 def make_dir(path: str, confirm_func: Optional[Callable] = None) -> str:
     try:
         resolved = resolve_and_verify_path(path, confirm_func)
@@ -185,6 +194,7 @@ def make_dir(path: str, confirm_func: Optional[Callable] = None) -> str:
         return f"{type(e).__name__}: {e}"
 
 
+@register_tool()
 def file_info(path: str, confirm_func: Optional[Callable] = None) -> str:
     try:
         resolved = resolve_and_verify_path(path, confirm_func)
@@ -211,6 +221,7 @@ def file_info(path: str, confirm_func: Optional[Callable] = None) -> str:
         return f"{type(e).__name__}: {e}"
 
 
+@register_tool()
 def search_in_file(
     path: str, pattern: str, confirm_func: Optional[Callable] = None
 ) -> str:
@@ -233,6 +244,7 @@ def search_in_file(
         return f"{type(e).__name__}: {e}"
 
 
+@register_tool()
 def send_to_telegram(path: str, confirm_func: Optional[Callable] = None) -> str:
     """Signal the bot to upload a file to the user."""
     try:

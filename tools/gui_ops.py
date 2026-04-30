@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 """
 GUI Perception & Interaction Engine — UI-TARS-inspired.
 
@@ -100,6 +101,7 @@ def _check_ocr():
 # ======================================================================
 
 
+@register_tool()
 def gui_mouse_move(x: int, y: int, duration: float = 0.0) -> str:
     """Move the mouse cursor to a specific (x, y) coordinate."""
     _check_pyautogui()
@@ -112,6 +114,7 @@ def gui_mouse_move(x: int, y: int, duration: float = 0.0) -> str:
         return f"Error: {e}"
 
 
+@register_tool()
 def gui_mouse_click(button: str = "left", clicks: int = 1) -> str:
     """Click the mouse."""
     _check_pyautogui()
@@ -131,6 +134,7 @@ def gui_mouse_click(button: str = "left", clicks: int = 1) -> str:
         return f"Error: {e}"
 
 
+@register_tool()
 def gui_type_text(text: str, interval: float = 0.0) -> str:
     """Type a string of characters."""
     _check_pyautogui()
@@ -143,6 +147,7 @@ def gui_type_text(text: str, interval: float = 0.0) -> str:
         return f"Error: {e}"
 
 
+@register_tool()
 def gui_press_key(key: str) -> str:
     """Press a single key or a combination (e.g., 'enter', 'ctrl+c')."""
     _check_pyautogui()
@@ -159,6 +164,7 @@ def gui_press_key(key: str) -> str:
         return f"Error: {e}"
 
 
+@register_tool()
 def gui_screenshot(save_path: str = "screenshot.png") -> str:
     """Take a screenshot using scrot as a fallback if pyautogui fails on Linux."""
     try:
@@ -185,6 +191,7 @@ def gui_screenshot(save_path: str = "screenshot.png") -> str:
             return f"Error taking screenshot: {e}"
 
 
+@register_tool()
 def gui_get_screen_size() -> str:
     """Get the screen resolution. Uses xrandr as fallback."""
     _check_pyautogui()
@@ -484,6 +491,7 @@ def _fuzzy_match(query: str, text: str) -> float:
 # ======================================================================
 
 
+@register_tool()
 def gui_analyze_screen(
     save_path: str = "",
     region: str = "",
@@ -568,6 +576,7 @@ def gui_analyze_screen(
         return json.dumps({"error": str(e)})
 
 
+@register_tool()
 def gui_find_element(description: str) -> str:
     """
     Find a GUI element by natural language description.
@@ -646,6 +655,7 @@ def gui_find_element(description: str) -> str:
         return json.dumps({"error": str(e)})
 
 
+@register_tool()
 def gui_click_element(
     description: str,
     button: str = "left",
@@ -712,6 +722,7 @@ def gui_click_element(
         return json.dumps({"error": str(e)})
 
 
+@register_tool()
 def gui_observe_transition(
     action_description: str = "",
     wait_seconds: float = 1.0,
@@ -791,6 +802,7 @@ def gui_observe_transition(
         return json.dumps({"error": str(e)})
 
 
+@register_tool()
 def gui_scroll_screen(
     direction: str = "down",
     amount: int = 3,
@@ -854,6 +866,7 @@ def gui_scroll_screen(
         return json.dumps({"error": str(e)})
 
 
+@register_tool()
 def gui_read_text_at(x: int, y: int, width: int, height: int) -> str:
     """
     Read (OCR) the text at a specific screen region.

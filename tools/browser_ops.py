@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 import asyncio
 import contextlib
 import json
@@ -136,6 +137,7 @@ async def _get_page():
         return _page_instance
 
 
+@register_tool()
 async def browser_navigate(url: str) -> str:
     """Navigate with improved wait conditions and CAPTCHA detection."""
     try:
@@ -161,6 +163,7 @@ async def browser_navigate(url: str) -> str:
         return f"Error navigating to URL: {e}"
 
 
+@register_tool()
 async def browser_click(selector: str) -> str:
     """Click an element with simulated human noise and jitter."""
     try:
@@ -191,6 +194,7 @@ async def browser_click(selector: str) -> str:
         return f"Error clicking element: {e}"
 
 
+@register_tool()
 async def browser_click_at(x: int, y: int) -> str:
     """Click at coordinates with human jitter."""
     try:
@@ -210,6 +214,7 @@ async def browser_click_at(x: int, y: int) -> str:
         return f"Error: {e}"
 
 
+@register_tool()
 async def browser_press_key(key: str) -> str:
     """Press a specific keyboard key (e.g., 'Enter', 'Tab', 'Escape', 'ArrowDown')."""
     try:
@@ -222,6 +227,7 @@ async def browser_press_key(key: str) -> str:
         return f"Error pressing key: {e}"
 
 
+@register_tool()
 async def browser_scroll(
     direction: str = "down",
     pixels: int = 1200,
@@ -281,6 +287,7 @@ async def browser_scroll(
         return f"Error scrolling page: {e}"
 
 
+@register_tool()
 async def browser_extract_links(limit: int = 40, same_domain: bool = True) -> str:
     """Extract normalized links from current page for deep crawl/pagination."""
     if limit <= 0:
@@ -344,6 +351,7 @@ async def browser_extract_links(limit: int = 40, same_domain: bool = True) -> st
         return f"Error extracting links: {e}"
 
 
+@register_tool()
 async def browser_click_next() -> str:
     """Click common next-page controls to continue beyond page 1."""
     selectors = [
@@ -395,6 +403,7 @@ async def browser_click_next() -> str:
         return f"Error moving to next page: {e}"
 
 
+@register_tool()
 async def browser_scroll_until_end(
     max_rounds: int = 12,
     step_pixels: int = 1400,
@@ -481,6 +490,7 @@ async def browser_scroll_until_end(
         return f"Error scrolling until end: {e}"
 
 
+@register_tool()
 async def browser_crawl_step(
     link_limit: int = 40,
     same_domain: bool = True,
@@ -556,6 +566,7 @@ async def browser_crawl_step(
         return f"Error in crawl step: {e}"
 
 
+@register_tool()
 async def browser_type(selector: str, text: str, press_enter: bool = True) -> str:
     """Type with randomized delays to mimic human typing."""
     try:
@@ -575,6 +586,7 @@ async def browser_type(selector: str, text: str, press_enter: bool = True) -> st
         return f"Error: {e}"
 
 
+@register_tool()
 async def browser_screenshot() -> str:
     try:
         page = await _get_page()
@@ -591,6 +603,7 @@ async def browser_screenshot() -> str:
         return f"Error: {e}"
 
 
+@register_tool()
 async def browser_extract_text() -> str:
     try:
         page = await _get_page()
@@ -602,6 +615,7 @@ async def browser_extract_text() -> str:
         return f"Error: {e}"
 
 
+@register_tool()
 async def browser_wait(seconds: float) -> str:
     if seconds < 0:
         return "Error: `seconds` must be >= 0."
@@ -610,6 +624,7 @@ async def browser_wait(seconds: float) -> str:
     return f"Waited {seconds}s."
 
 
+@register_tool()
 async def browser_close() -> str:
     global _browser_context, _browser_exit_stack, _page_instance
     async with _lock:

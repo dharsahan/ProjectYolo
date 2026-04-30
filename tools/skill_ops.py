@@ -1,8 +1,10 @@
+from tools.registry import register_tool
 from pathlib import Path
 
 from tools.base import YOLO_SKILLS, audit_log
 
 
+@register_tool()
 def list_skills() -> str:
     """List all available specialized skills in the global skills directory."""
     try:
@@ -23,6 +25,7 @@ def list_skills() -> str:
         return f"Error listing skills: {e}"
 
 
+@register_tool()
 def read_skill(name: str) -> str:
     """Read the full manual/procedure for a specific skill."""
     try:
@@ -45,6 +48,7 @@ def read_skill(name: str) -> str:
         return f"Error reading skill: {e}"
 
 
+@register_tool()
 def develop_new_skill(name: str, content: str) -> str:
     """Autonomously develop and record a new specialized skill in the skills directory."""
     try:

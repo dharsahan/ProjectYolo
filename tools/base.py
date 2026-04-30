@@ -106,8 +106,9 @@ def audit_log(tool: str, args: Dict[str, Any], status: str, detail: str = ""):
     try:
         with open(YOLO_LOG_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry) + "\n")
-    except Exception:
-        pass
+    except Exception as e:
+        import sys
+        sys.stderr.write(f"Failed to write audit log: {e}\n")
 
 
 def format_log_line(line: str) -> str:
@@ -131,16 +132,31 @@ def format_log_line(line: str) -> str:
 
 
 def get_mem0_config():
-    """Returns the standardized configuration for Mem0."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    model = os.getenv("MODEL_NAME", "gpt-4o")
+    """
+    Returns the standardized configuration for Mem0.
+    Note: Mem0 requires an embedding model. If using a non-OpenAI LLM provider
+    like Anthropic, you still need OPENAI_API_KEY for embeddings unless you
+    configure a local/compatible embedding endpoint via OPENAI_BASE_URL.
+    """
+    from llm_router import load_llm_config
+    llm_cfg = load_llm_config()
+
+    api_key = os.getenv("OPENAI_API_KEY") or llm_cfg.api_key
+    base_url = os.getenv("OPENAI_BASE_URL") or (llm_cfg.base_url if llm_cfg.provider in ["openai", "compatible"] else "https://api.openai.com/v1")
     
+    llm_provider = llm_cfg.provider if llm_cfg.provider in ["openai", "anthropic", "openrouter"] else "openai"
+    llm_config_dict = {"api_key": llm_cfg.api_key, "model": llm_cfg.model}
+    if llm_cfg.base_url:
+        if llm_provider == "openai":
+            llm_config_dict["openai_base_url"] = llm_cfg.base_url
+        else:
+            llm_config_dict["base_url"] = llm_cfg.base_url
+
     # Adaptive Embedding Model for local setups
     if "4141" in base_url:
         embedding_model = os.getenv("EMBEDDING_MODEL_NAME", "text-embedding-ada-002")
         embedding_dim = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
-    elif api_key == "dummy" or "localhost" in base_url or "127.0.0.1" in base_url:
+    elif api_key == "dummy" or "localhost" in base_url or "127.0.0.1" in base_url or (llm_cfg.provider == "anthropic" and not os.getenv("OPENAI_API_KEY")):
         embedding_model = os.getenv("EMBEDDING_MODEL_NAME", "all-minilm")
         embedding_dim = int(os.getenv("EMBEDDING_DIMENSIONS", "384"))
     else:
@@ -152,8 +168,8 @@ def get_mem0_config():
 
     return {
         "llm": {
-            "provider": "openai",
-            "config": {"api_key": api_key, "openai_base_url": base_url, "model": model},
+            "provider": llm_provider,
+            "config": llm_config_dict,
         },
         "embedder": {
             "provider": "openai",

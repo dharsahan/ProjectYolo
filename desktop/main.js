@@ -1,8 +1,78 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, Notification, globalShortcut } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
 
 let mainWindow;
+let tray;
+let pyBridge;
 const BRIDGE_PORT = parseInt(process.env.DESKTOP_BRIDGE_PORT || '8790', 10);
+
+function toggleWindow() {
+  if (!mainWindow) {
+    createWindow();
+  } else if (mainWindow.isVisible() && mainWindow.isFocused()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
+function createTray() {
+  const iconPath = path.join(__dirname, 'renderer', 'icon.png');
+  // Note: if icon.png is missing, Tray may show a placeholder or empty space.
+  tray = new Tray(iconPath);
+  
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Show/Hide Window',
+      click: () => toggleWindow()
+    },
+    {
+      label: 'Toggle YOLO Mode',
+      click: async () => {
+        try {
+          // Fetch current session to determine current mode
+          const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/session?user_id=1`);
+          const session = await resp.json();
+          const newMode = session.yolo_mode ? 'safe' : 'yolo';
+          
+          // Toggle via /command endpoint
+          await fetch(`http://127.0.0.1:${BRIDGE_PORT}/command`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: 'mode', args: [newMode], user_id: 1 }),
+          });
+          
+          // Notify renderer if window exists
+          mainWindow?.webContents?.send('mode-toggled', { mode: newMode });
+          
+          console.log(`[tray] YOLO Mode toggled to: ${newMode}`);
+        } catch (err) {
+          console.error('[tray] Failed to toggle YOLO mode:', err);
+        }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Exit',
+      click: () => {
+        app.quit();
+      }
+    }
+  ]);
+
+  tray.setToolTip('Yolo AI Agent');
+  tray.setContextMenu(contextMenu);
+
+  tray.on('double-click', () => {
+    if (mainWindow) {
+      mainWindow.show();
+    } else {
+      createWindow();
+    }
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -31,12 +101,12 @@ function createWindow() {
 
 // ── IPC Handlers (all relay to the bridge started by server.py / bot.py) ──
 
-ipcMain.handle('send-message', async (_event, { message, userId }) => {
+ipcMain.handle('send-message', async (_event, { message, userId, attachments }) => {
   try {
     const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, user_id: userId || 1 }),
+      body: JSON.stringify({ message, user_id: userId || 1, attachments: attachments || [] }),
     });
     return await resp.json();
   } catch (err) {
@@ -50,6 +120,15 @@ ipcMain.handle('get-session', async (_event, { userId }) => {
     return await resp.json();
   } catch {
     return { messages: [], history_length: 0 };
+  }
+});
+
+ipcMain.handle('get-sessions', async () => {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/sessions`, { cache: 'no-store' });
+    return await resp.json();
+  } catch {
+    return { sessions: [] };
   }
 });
 
@@ -80,12 +159,12 @@ ipcMain.handle('fetch-worker-session', async (_event, taskId) => {
   }
 });
 
-ipcMain.handle('run-command', async (_event, { command, args, userId }) => {
+ipcMain.handle('run-command', async (_event, { command, args, userId, attachments }) => {
   try {
     const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, args: args || [], user_id: userId || 1 }),
+      body: JSON.stringify({ command, args: args || [], user_id: userId || 1, attachments: attachments || [] }),
     });
     return await resp.json();
   } catch (err) {
@@ -93,13 +172,58 @@ ipcMain.handle('run-command', async (_event, { command, args, userId }) => {
   }
 });
 
+ipcMain.handle('show-confirmation-dialog', async (_event, details) => {
+  const { action, tool_args } = details;
+  const result = dialog.showMessageBoxSync(mainWindow, {
+    type: 'question',
+    buttons: ['Confirm', 'Deny'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Action Confirmation',
+    message: `The agent wants to execute: ${action}`,
+    detail: `Arguments: ${JSON.stringify(tool_args, null, 2)}\n\nDo you want to allow this?`,
+  });
+  return result; // 0 for Confirm, 1 for Deny
+});
+
+ipcMain.handle('confirm-action', async (_event, { confirmed, userId }) => {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmed, user_id: userId || 1 }),
+    });
+    return await resp.json();
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('show-notification', (_event, { title, body }) => {
+  if (Notification.isSupported()) {
+    new Notification({
+      title,
+      body,
+      icon: path.join(__dirname, 'renderer', 'icon.png'),
+    }).show();
+  }
+});
+
+let currentAbortController = null;
+
 // Streaming chat: opens SSE connection to /chat/stream and relays events to renderer
-ipcMain.handle('stream-chat', async (_event, { message, userId }) => {
+ipcMain.handle('stream-chat', async (_event, { message, userId, attachments }) => {
+  if (currentAbortController) {
+    currentAbortController.abort();
+  }
+  currentAbortController = new AbortController();
+
   try {
     const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, user_id: userId || 1 }),
+      body: JSON.stringify({ message, user_id: userId || 1, attachments: attachments || [] }),
+      signal: currentAbortController.signal,
     });
 
     if (!resp.ok) {
@@ -142,7 +266,36 @@ ipcMain.handle('stream-chat', async (_event, { message, userId }) => {
     }
     return { ok: true };
   } catch (err) {
+    if (err.name === 'AbortError') {
+      console.log('[main] Chat stream aborted');
+      mainWindow?.webContents?.send('chat-stream-event', { type: 'error', data: 'Stream aborted' });
+      return { error: 'Stream aborted' };
+    }
     mainWindow?.webContents?.send('chat-stream-event', { type: 'error', data: err.message });
+    return { error: err.message };
+  } finally {
+    currentAbortController = null;
+  }
+});
+
+ipcMain.handle('abort-chat-stream', () => {
+  if (currentAbortController) {
+    currentAbortController.abort();
+    currentAbortController = null;
+    return { ok: true };
+  }
+  return { ok: false };
+});
+
+ipcMain.handle('transcribe', async (_event, { audio }) => {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/transcribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio }),
+    });
+    return await resp.json();
+  } catch (err) {
     return { error: err.message };
   }
 });
@@ -150,7 +303,25 @@ ipcMain.handle('stream-chat', async (_event, { message, userId }) => {
 // ── App lifecycle ──
 
 app.whenReady().then(() => {
+  // Start Python Bridge automatically
+  pyBridge = spawn('python3', [path.join(__dirname, 'api_bridge.py')], { 
+    stdio: 'inherit',
+    env: { ...process.env, PYTHONUNBUFFERED: '1' }
+  });
+
   createWindow();
+  createTray();
+
+  // Register global shortcut
+  const shortcut = process.platform === 'darwin' ? 'Command+Shift+Y' : 'Control+Shift+Y';
+  const ret = globalShortcut.register(shortcut, () => {
+    console.log(`[main] Global shortcut ${shortcut} pressed`);
+    toggleWindow();
+  });
+
+  if (!ret) {
+    console.error('[main] Registration failed for shortcut:', shortcut);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -159,4 +330,13 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+  // Unregister all shortcuts
+  globalShortcut.unregisterAll();
+});
+
+app.on('quit', () => {
+  if (pyBridge) pyBridge.kill();
 });

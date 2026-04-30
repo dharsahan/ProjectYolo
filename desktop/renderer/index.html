@@ -13,19 +13,39 @@
     href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet">
 
-  <!-- Markdown + Code highlighting via CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <!-- Markdown + Code highlighting (local) -->
+  <script src="vendor/marked.min.js"></script>
+  <link rel="stylesheet" href="vendor/github-dark.min.css" />
+  <script src="vendor/highlight.min.js"></script>
 
-  <!-- Motion library for animations -->
-  <script src="https://cdn.jsdelivr.net/npm/motion@11.11.13/dist/motion.js"></script>
+  <!-- KaTeX for math (local) -->
+  <link rel="stylesheet" href="vendor/katex.min.css" />
+  <script src="vendor/katex.min.js"></script>
+
+  <!-- Motion library for animations (local) -->
+  <script src="vendor/motion.js"></script>
 
   <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
   <div id="app">
+    <!-- ═══════════════ SIDEBAR ═══════════════ -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <h2>History</h2>
+        <button id="new-chat-btn" class="icon-btn" title="New Conversation">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+      <div id="session-list" class="session-list">
+        <!-- Sessions will be injected here -->
+      </div>
+    </aside>
+
     <!-- ═══════════════ MAIN CHAT AREA ═══════════════ -->
     <main id="chat-area">
       <!-- Connection status bar -->
@@ -159,6 +179,11 @@
           </div>
 
           <div class="input-actions-right">
+            <button id="stop-btn" class="custom-stop-btn hidden" title="Stop generating">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2" ry="2"></rect>
+              </svg>
+            </button>
             <button id="voice-btn" class="input-icon-btn voice-btn" title="Voice message">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>

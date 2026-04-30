@@ -1,8 +1,10 @@
+from tools.registry import register_tool
 from tools.base import YOLO_HOME, audit_log
 
 IDENTITY_FILE = YOLO_HOME / "identity.md"
 
 
+@register_tool()
 def read_user_identity() -> str:
     """Read the current Master User Identity profile."""
     try:
@@ -13,6 +15,7 @@ def read_user_identity() -> str:
         return f"Error reading identity: {e}"
 
 
+@register_tool()
 def update_user_identity(observations: str) -> str:
     """Refine the Master User Identity with new technical or psychological observations."""
     try:

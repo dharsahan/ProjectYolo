@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 import os
 import datetime
 from pathlib import Path
@@ -6,6 +7,7 @@ from tools.base import YOLO_ARTIFACTS, audit_log
 ARTIFACTS_DIR = YOLO_ARTIFACTS
 
 
+@register_tool()
 def create_artifact(name: str, content: str, file_type: str = "md") -> str:
     """Create a persistent, high-quality deliverable in the artifacts directory."""
     try:
@@ -29,6 +31,7 @@ def create_artifact(name: str, content: str, file_type: str = "md") -> str:
         return f"Error creating artifact: {e}"
 
 
+@register_tool()
 def list_artifacts() -> str:
     """List all deliverables currently stored in the artifacts directory."""
     try:
@@ -53,6 +56,7 @@ def list_artifacts() -> str:
         return f"Error listing artifacts: {e}"
 
 
+@register_tool()
 def get_latest_artifact() -> str:
     """Return the newest artifact as a direct upload signal for Telegram."""
     try:

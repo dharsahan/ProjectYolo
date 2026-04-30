@@ -100,6 +100,33 @@ class LLMRouter:
         tool_choice: str = "auto",
         stream: bool = False,
     ) -> Any:
+        import asyncio
+        import random
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                return await self._chat_completions_inner(
+                    messages=messages, tools=tools, tool_choice=tool_choice, stream=stream
+                )
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_retryable = any(x in err_msg for x in ["429", "rate limit", "500", "502", "503", "504", "timeout", "too many requests"])
+                if is_retryable and attempt < max_retries - 1:
+                    delay = 2.0 * (2 ** attempt) + random.uniform(0, 1)
+                    print(f"LLM API rate limit or server error ({e}). Retrying in {delay:.2f}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+
+    async def _chat_completions_inner(
+        self,
+        *,
+        messages: list,
+        tools: list,
+        tool_choice: str = "auto",
+        stream: bool = False,
+    ) -> Any:
         if self.config.provider in {"openai", "openrouter", "compatible"}:
             if not self._openai_client:
                 raise RuntimeError("OpenAI-compatible client is not initialized")

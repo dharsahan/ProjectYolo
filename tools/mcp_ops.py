@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 import os
 import shlex
 from mcp import ClientSession, StdioServerParameters
@@ -27,6 +28,7 @@ def _normalize_mcp_result_content(content) -> str:
     return str(content)
 
 
+@register_tool()
 async def mcp_run_tool(server_command: str, tool_name: str, tool_args: dict) -> str:
     """Connect to an MCP server and execute a tool."""
     try:
@@ -62,6 +64,7 @@ async def mcp_run_tool(server_command: str, tool_name: str, tool_args: dict) -> 
         return f"Error executing MCP tool: {e}"
 
 
+@register_tool()
 async def mcp_list_tools(server_command: str) -> str:
     """List all tools provided by a specific MCP server."""
     try:

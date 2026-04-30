@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 import asyncio
 import uuid
 import logging
@@ -7,6 +8,7 @@ from tools.database_ops import add_background_task, update_background_task
 logger = logging.getLogger(__name__)
 
 
+@register_tool()
 async def run_background_mission(
     user_id: int, objective: str, mission_coro: Callable
 ) -> str:
@@ -29,11 +31,14 @@ async def run_background_mission(
             update_background_task(task_id, "failed", str(e))
 
     # Fire and forget
-    asyncio.create_task(worker())
+    task = asyncio.create_task(worker())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
     return f"Mission started in the background. Task ID: `{task_id}`. I will notify you when it's done."
 
 
+@register_tool()
 async def dispatch_parallel_agents(
     user_id: int,
     objectives: list[str],

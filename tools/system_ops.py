@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 import os
 import re
 import select
@@ -146,6 +147,7 @@ def _get_session(session_id: str) -> _TerminalSession:
     return sess
 
 
+@register_tool()
 def terminal_start(shell: str = "", cwd: str = "") -> str:
     """Start a persistent interactive terminal session and return a session ID."""
     if os.name == "nt":
@@ -241,6 +243,7 @@ def terminal_start(shell: str = "", cwd: str = "") -> str:
         return f"Error starting terminal session: {e}"
 
 
+@register_tool()
 def terminal_send(
     session_id: str,
     text: str,
@@ -280,6 +283,7 @@ def terminal_send(
         return f"Error sending terminal input: {e}"
 
 
+@register_tool()
 def terminal_read(session_id: str, max_chars: int = MAX_OUTPUT_CHARS, wait_seconds: float = 0) -> str:
     """Read currently available output from a terminal session without sending input.
     
@@ -325,6 +329,7 @@ def terminal_read(session_id: str, max_chars: int = MAX_OUTPUT_CHARS, wait_secon
         return f"Error reading terminal output: {e}"
 
 
+@register_tool()
 def terminal_list() -> str:
     """List all active terminal sessions with their status, shell, cwd, and age."""
     with _terminal_lock:
@@ -345,6 +350,7 @@ def terminal_list() -> str:
     return "\n".join(lines)
 
 
+@register_tool()
 def terminal_stop(session_id: str, force: bool = False) -> str:
     """Stop and clean up an interactive terminal session."""
     try:
@@ -397,6 +403,7 @@ def _parse_session_id(start_output: str) -> str:
     return token
 
 
+@register_tool()
 def terminal_interactive_run(
     command: str = "",
     inputs: list[str] | None = None,
@@ -473,6 +480,7 @@ def terminal_interactive_run(
         return _trim_output("\n\n".join(transcript))
 
 
+@register_tool()
 def run_bash(command: str) -> str:
     """Execute a bash command either locally or in a Docker sandbox."""
     enabled = os.getenv("DOCKER_SANDBOX_ENABLED", "false").lower() == "true"

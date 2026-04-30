@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 import httpx
 from bs4 import BeautifulSoup  # type: ignore
 from duckduckgo_search import DDGS
@@ -6,6 +7,7 @@ from tools.base import audit_log
 MAX_BROWSE_TEXT_CHARS = 8000
 
 
+@register_tool()
 def web_search(query: str) -> str:
     """Search the internet for real-time information."""
     try:
@@ -32,6 +34,7 @@ def web_search(query: str) -> str:
         return f"Error performing web search via API: {e}. Suggestion: Use `browser_navigate` to perform a manual search."
 
 
+@register_tool()
 def browse_url(url: str) -> str:
     """Fetch and extract text content from a specific URL."""
     try:

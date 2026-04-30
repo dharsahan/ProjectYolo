@@ -1,7 +1,9 @@
+from tools.registry import register_tool
 from tools.base import audit_log
 from tools.memory_service import get_memory
 
 
+@register_tool()
 def memory_list(user_id: int) -> str:
     """List all stored memories for the current user using shared instance."""
     try:
@@ -33,6 +35,7 @@ def memory_list(user_id: int) -> str:
         return f"Error listing memories: {e}"
 
 
+@register_tool()
 def memory_add(user_id: int, fact: str) -> str:
     """Manually add a specific fact using shared instance."""
     try:
@@ -45,6 +48,7 @@ def memory_add(user_id: int, fact: str) -> str:
         return f"Error adding memory: {e}"
 
 
+@register_tool()
 def memory_delete(memory_id: str) -> str:
     """Delete a single memory by its unique ID."""
     try:
@@ -58,6 +62,7 @@ def memory_delete(memory_id: str) -> str:
         return f"Error deleting memory `{memory_id}`: {e}"
 
 
+@register_tool()
 def memory_wipe(user_id: int) -> str:
     """Permanently delete all memories using shared instance."""
     try:

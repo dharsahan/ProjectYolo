@@ -44,6 +44,21 @@ DEFAULT_USER_ID = int(_allowed.split(",")[0].strip()) if _allowed.strip() else 1
 
 # ── HTTP Handlers ──
 
+def handle_attachments(session, attachments):
+    """Process attachments by appending them to the session history."""
+    if not attachments:
+        return
+    
+    content = "**[File Attachments Received]**\n"
+    for att in attachments:
+        name = att.get("name", "unnamed")
+        data = att.get("content", "")
+        content += f"\n---\nFile: `{name}`\nContent:\n{data}\n"
+    
+    session.message_history.append({"role": "user", "content": content})
+    session.history_dirty = True
+
+
 async def handle_chat(request: web.Request) -> web.Response:
     """POST /chat  — send a user message through the shared session."""
     try:
@@ -53,14 +68,18 @@ async def handle_chat(request: web.Request) -> web.Response:
 
     message = data.get("message", "").strip()
     user_id = int(data.get("user_id", 1))
+    attachments = data.get("attachments", [])
 
-    if not message:
+    if not message and not attachments:
         return web.json_response({"error": "Empty message"}, status=400)
 
     # Use the SAME session that Telegram/CLI would use for this user_id.
     # SessionManager.get_or_create() loads from SQLite if not in memory.
     async with session_manager.get_lock(user_id):
         session = session_manager.get_or_create(user_id)
+        
+        if attachments:
+            handle_attachments(session, attachments)
 
         try:
             response = await yolo_agent.run_agent_turn(
@@ -72,27 +91,14 @@ async def handle_chat(request: web.Request) -> web.Response:
             session_manager.save(user_id)
             return web.json_response({"response": response})
         except yolo_agent.PendingConfirmationError as e:
-            # Desktop defaults to YOLO — auto-approve and execute.
-            result = await yolo_agent.execute_tool_direct(
-                e.action, e.tool_args, user_id, signal_handler=None, session=session
-            )
-            # Patch the HITL placeholder in history with real result
-            for msg in reversed(session.message_history):
-                if msg.get("role") == "tool" and msg.get("tool_call_id") == e.tool_call_id:
-                    msg["content"] = result
-                    break
-            session.history_dirty = True
-
-            # Re-run the turn to get the final text response
-            try:
-                response = await yolo_agent.run_agent_turn(
-                    None, session, signal_handler=None, memory_service=session_manager.memory
-                )
-            except Exception:
-                response = f"Tool executed: {result}"
-
-            session_manager.save(user_id)
-            return web.json_response({"response": response})
+            # Phase 2: Native HITL UI — Return needs_confirmation instead of auto-approving.
+            return web.json_response({
+                "status": "needs_confirmation",
+                "action": e.action,
+                "tool_args": e.tool_args,
+                "tool_call_id": e.tool_call_id,
+                "user_id": user_id
+            })
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
 
@@ -106,8 +112,9 @@ async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
 
     message = data.get("message", "").strip()
     user_id = int(data.get("user_id", 1))
+    attachments = data.get("attachments", [])
 
-    if not message:
+    if not message and not attachments:
         return web.json_response({"error": "Empty message"}, status=400)
 
     resp = web.StreamResponse(
@@ -125,7 +132,7 @@ async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
     stream_queue = asyncio.Queue()
 
     async def _signal_handler(signal_text: str):
-        """Bridge agent __STREAM__ signals into the SSE queue."""
+        """Bridge agent signals into the SSE queue."""
         if signal_text.startswith("__STREAM__:"):
             content = signal_text[len("__STREAM__:"):]
             await stream_queue.put(("stream", content))
@@ -135,12 +142,28 @@ async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
             status_text = signal_text[len("__STATUS__:"):].strip()
             if status_text:
                 await stream_queue.put(("status", status_text))
+        elif signal_text.startswith("__TOOL_CALL__:"):
+            try:
+                data = json.loads(signal_text[len("__TOOL_CALL__:"):])
+                await stream_queue.put(("tool_call", data))
+            except Exception:
+                pass
+        elif signal_text.startswith("__TOOL_RESULT__:"):
+            try:
+                data = json.loads(signal_text[len("__TOOL_RESULT__:"):])
+                await stream_queue.put(("tool_result", data))
+            except Exception:
+                pass
 
     async def _run_turn():
         """Run the agent turn in background and push final result."""
         try:
             async with session_manager.get_lock(user_id):
                 session = session_manager.get_or_create(user_id)
+                
+                if attachments:
+                    handle_attachments(session, attachments)
+
                 try:
                     final = await yolo_agent.run_agent_turn(
                         message,
@@ -151,24 +174,13 @@ async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
                     session_manager.save(user_id)
                     await stream_queue.put(("done", final))
                 except yolo_agent.PendingConfirmationError as e:
-                    result = await yolo_agent.execute_tool_direct(
-                        e.action, e.tool_args, user_id,
-                        signal_handler=_signal_handler, session=session,
-                    )
-                    for msg in reversed(session.message_history):
-                        if msg.get("role") == "tool" and msg.get("tool_call_id") == e.tool_call_id:
-                            msg["content"] = result
-                            break
-                    session.history_dirty = True
-                    try:
-                        final = await yolo_agent.run_agent_turn(
-                            None, session, signal_handler=_signal_handler,
-                            memory_service=session_manager.memory,
-                        )
-                    except Exception:
-                        final = f"Tool executed: {result}"
-                    session_manager.save(user_id)
-                    await stream_queue.put(("done", final))
+                    # Phase 2: Native HITL UI
+                    await stream_queue.put(("needs_confirmation", {
+                        "action": e.action,
+                        "tool_args": e.tool_args,
+                        "tool_call_id": e.tool_call_id,
+                        "user_id": user_id
+                    }))
         except Exception as exc:
             await stream_queue.put(("error", str(exc)))
 
@@ -181,6 +193,13 @@ async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
                 await resp.write(f"event: stream\ndata: {json.dumps(payload)}\n\n".encode())
             elif event_type == "status":
                 await resp.write(f"event: status\ndata: {json.dumps(payload)}\n\n".encode())
+            elif event_type == "tool_call":
+                await resp.write(f"event: tool_call\ndata: {json.dumps(payload)}\n\n".encode())
+            elif event_type == "tool_result":
+                await resp.write(f"event: tool_result\ndata: {json.dumps(payload)}\n\n".encode())
+            elif event_type == "needs_confirmation":
+                await resp.write(f"event: needs_confirmation\ndata: {json.dumps(payload)}\n\n".encode())
+                break
             elif event_type == "done":
                 await resp.write(f"event: done\ndata: {json.dumps(payload)}\n\n".encode())
                 break
@@ -196,6 +215,49 @@ async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
             await task
 
     return resp
+
+
+async def handle_confirm(request: web.Request) -> web.Response:
+    """POST /confirm — Resolve a pending confirmation."""
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    user_id = int(data.get("user_id", 1))
+    confirmed = data.get("confirmed", False)
+    
+    async with session_manager.get_lock(user_id):
+        session = session_manager.get_or_create(user_id)
+        
+        if not session.pending_confirmations:
+            return web.json_response({"error": "No pending confirmations"}, status=400)
+            
+        p = session.pending_confirmations.pop(0)
+        
+        try:
+            if confirmed:
+                result = await yolo_agent.execute_tool_direct(
+                    p["action"], p["tool_args"], user_id, signal_handler=None, session=session
+                )
+            else:
+                result = "Action denied by user."
+                
+            # Patch the HITL placeholder in history with real result
+            for msg in reversed(session.message_history):
+                if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
+                    msg["content"] = result
+                    break
+            session.history_dirty = True
+            
+            # Re-run the turn to get the final response
+            response = await yolo_agent.run_agent_turn(
+                None, session, signal_handler=None, memory_service=session_manager.memory
+            )
+            session_manager.save(user_id)
+            return web.json_response({"response": response})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
 
 
 async def handle_command(request: web.Request) -> web.Response:
@@ -423,15 +485,77 @@ async def handle_get_worker_session(request: web.Request) -> web.Response:
     return web.json_response({"messages": messages})
 
 
+async def handle_get_sessions(request: web.Request) -> web.Response:
+    """GET /sessions — list all unique user_id sessions in the database."""
+    from tools.database_ops import list_sessions
+    sessions = list_sessions()
+    result = []
+    for s in sessions:
+        result.append({
+            "user_id": s[0],
+            "last_active": str(s[1])
+        })
+    return web.json_response({"sessions": result})
+
+
+async def handle_transcribe(request: web.Request) -> web.Response:
+    """POST /transcribe — transcribe audio data."""
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    audio_base64 = data.get("audio")
+    if not audio_base64:
+        return web.json_response({"error": "Missing audio data"}, status=400)
+
+    import base64
+    import tempfile
+    from openai import OpenAI
+
+    try:
+        # Decode base64 to bytes
+        audio_bytes = base64.b64decode(audio_base64)
+        
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if api_key and api_key.startswith("sk-"):
+            client = OpenAI(api_key=api_key)
+            with open(tmp_path, "rb") as audio_file:
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1", 
+                    file=audio_file
+                )
+            text = transcript.text
+        else:
+            # Mock transcription for testing
+            text = "This is a mock transcription of your voice message."
+
+        # Cleanup
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+        return web.json_response({"text": text})
+    except Exception as exc:
+        return web.json_response({"error": str(exc)}, status=500)
+
+
 # ── App setup ──
 
 def create_app() -> web.Application:
     app = web.Application()
     app.router.add_post("/chat", handle_chat)
     app.router.add_post("/chat/stream", handle_chat_stream)
+    app.router.add_post("/confirm", handle_confirm)
     app.router.add_post("/command", handle_command)
+    app.router.add_post("/transcribe", handle_transcribe)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/session", handle_session_info)
+    app.router.add_get("/sessions", handle_get_sessions)
     app.router.add_get("/workers", handle_get_workers)
     app.router.add_get("/workers/{task_id}/session", handle_get_worker_session)
     return app

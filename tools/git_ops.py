@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 """
 Git Integration Tools — structured wrappers around git operations.
 
@@ -47,6 +48,7 @@ def _run_git(*args: str, timeout: int = GIT_TIMEOUT_SECONDS) -> tuple[int, str, 
         return -1, "", str(e)
 
 
+@register_tool()
 def git_status() -> str:
     """Get the current git repository status in a structured format."""
     try:
@@ -109,6 +111,7 @@ def git_status() -> str:
         return f"Error: {e}"
 
 
+@register_tool()
 def git_diff(path: str = "", staged: bool = False) -> str:
     """Show the diff for modified files. Use `staged=true` for staged changes."""
     try:
@@ -143,6 +146,7 @@ def git_diff(path: str = "", staged: bool = False) -> str:
         return f"Error: {e}"
 
 
+@register_tool()
 def git_log(count: int = 10, oneline: bool = True) -> str:
     """Show recent commit history."""
     try:
@@ -172,6 +176,7 @@ def git_log(count: int = 10, oneline: bool = True) -> str:
         return f"Error: {e}"
 
 
+@register_tool()
 def git_commit(message: str, add_all: bool = False) -> str:
     """Create a git commit. Optionally stage all changes first."""
     try:
@@ -199,6 +204,7 @@ def git_commit(message: str, add_all: bool = False) -> str:
         return f"Error: {e}"
 
 
+@register_tool()
 def git_branch(name: str = "", switch: bool = False, delete: bool = False) -> str:
     """List, create, switch, or delete branches."""
     try:
@@ -238,6 +244,7 @@ def git_branch(name: str = "", switch: bool = False, delete: bool = False) -> st
         return f"Error: {e}"
 
 
+@register_tool()
 def git_stash(action: str = "list", message: str = "") -> str:
     """Manage the git stash: list, push, pop, or apply."""
     try:

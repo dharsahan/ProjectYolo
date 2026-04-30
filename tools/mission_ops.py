@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 import json
 from pathlib import Path
 from tools.base import YOLO_MISSION_FILE, audit_log
@@ -5,6 +6,7 @@ from tools.base import YOLO_MISSION_FILE, audit_log
 MISSION_FILE = YOLO_MISSION_FILE
 
 
+@register_tool()
 def create_mission(objective: str, strategy: str) -> str:
     """Initialize a new mission plan for a complex task."""
     try:
@@ -27,6 +29,7 @@ def create_mission(objective: str, strategy: str) -> str:
         return f"Error creating mission: {e}"
 
 
+@register_tool()
 def update_mission(step_description: str, status: str = "completed") -> str:
     """Record progress on the current mission."""
     try:
@@ -54,6 +57,7 @@ def update_mission(step_description: str, status: str = "completed") -> str:
         return f"Error updating mission: {e}"
 
 
+@register_tool()
 def read_mission() -> str:
     """Retrieve the current mission status and strategy."""
     try:

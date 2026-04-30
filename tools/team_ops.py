@@ -1,13 +1,16 @@
+from tools.registry import register_tool
 import json
 from tools.database_ops import update_worker_status
 from tools.base import audit_log
 
+@register_tool()
 def report_completion(task_id: str, summary: str) -> str:
     """Worker tool: Report that the assigned task is complete."""
     update_worker_status(task_id, "completed", summary)
     audit_log("report_completion", {"task_id": task_id}, "success")
     return f"__WORKER_TERMINATE__: Task {task_id} marked as completed."
 
+@register_tool()
 def request_help(task_id: str, reason: str, context: str) -> str:
     """Worker tool: Report confusion and request Manager assistance."""
     details = json.dumps({"reason": reason, "context": context})
@@ -19,6 +22,7 @@ import asyncio
 import uuid
 from tools.database_ops import add_worker_task, _conn_ctx
 
+@register_tool()
 def spawn_worker(user_id: int, role: str, objective: str) -> str:
     """Manager tool: Spawn an isolated worker agent for a specific sub-task."""
     task_id = f"w_{uuid.uuid4().hex[:8]}"
@@ -36,6 +40,7 @@ def spawn_worker(user_id: int, role: str, objective: str) -> str:
     audit_log("spawn_worker", {"task_id": task_id, "role": role}, "success")
     return f"Worker spawned with Task ID: `{task_id}`. Role: {role}. Use `check_workers()` to monitor status."
 
+@register_tool()
 def check_workers(user_id: int) -> str:
     """Manager tool: Check the status of all active and recently completed workers."""
     with _conn_ctx() as conn:
@@ -57,6 +62,7 @@ def check_workers(user_id: int) -> str:
         
     return "\n".join(output)
 
+@register_tool()
 async def spawn_team_discussion(topic: str, roles: list[str], max_rounds: int = 5) -> str:
     """Manager tool: Spawn a synchronous chat room where specialized agents debate a topic until consensus."""
     from agent import router
@@ -120,6 +126,7 @@ async def spawn_team_discussion(topic: str, roles: list[str], max_rounds: int = 
     audit_log("spawn_team_discussion", {"topic": topic, "roles": roles}, "success")
     return "\n".join(transcript)
 
+@register_tool()
 def cancel_all_workers(user_id: int) -> str:
     """Manager tool: Forcefully cancel all currently 'running' workers for the user."""
     with _conn_ctx() as conn:

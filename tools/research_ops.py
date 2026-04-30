@@ -1,3 +1,4 @@
+from tools.registry import register_tool
 import json
 import re
 import threading
@@ -145,6 +146,7 @@ def _is_high_signal_link(
     return True, "ok"
 
 
+@register_tool()
 def research_enqueue_from_crawl_step(
     crawl_step_output: str,
     topic_hint: str = "",
@@ -254,6 +256,7 @@ def research_enqueue_from_crawl_step(
     )
 
 
+@register_tool()
 def research_queue_urls(urls: List[str]) -> str:
     """Add a list of discovered URLs to the research queue.
 
@@ -279,6 +282,7 @@ def research_queue_urls(urls: List[str]) -> str:
         return f"Error queuing URLs: {e}"
 
 
+@register_tool()
 def research_get_next() -> str:
     """Get the next unvisited URL from the queue."""
     try:
@@ -300,6 +304,7 @@ def research_get_next() -> str:
         return f"Error getting next URL: {e}"
 
 
+@register_tool()
 def research_store_summary(url: str, summary: str) -> str:
     """Store a concise summary of a visited site to the persistent state."""
     try:
@@ -313,6 +318,7 @@ def research_store_summary(url: str, summary: str) -> str:
         return f"Error storing summary: {e}"
 
 
+@register_tool()
 def research_get_all_summaries() -> str:
     """Retrieve the combined summaries of all sources analyzed so far."""
     try:
@@ -334,6 +340,7 @@ def research_get_all_summaries() -> str:
         return f"Error retrieving data: {e}"
 
 
+@register_tool()
 def research_clear() -> str:
     """Clear the persistent research state and queue."""
     try:
