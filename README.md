@@ -1,12 +1,16 @@
 # Project Yolo
 
 Project Yolo is an elite, highly autonomous AI system controller and expert software engineer agent. It acts as an orchestrator capable of solving complex software engineering, research, and general desktop tasks end-to-end. Built with a decoupled LLM architecture, it primarily operates via a chat gateway (Telegram/Discord) but also supports CLI and standalone server modes.
+
 ## Contributing
 
 Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) before submitting a PR.
 
 ## Table of Contents
 - [Core Capabilities](#core-capabilities)
+- [System Architecture & Flows](#system-architecture--flows)
+- [Desktop Interface](#desktop-interface)
+- [Tool System](#tool-system)
 - [Architecture & Internals](#architecture--internals)
 - [Prerequisites & Dependencies](#prerequisites--dependencies)
 - [Setup & Installation](#setup--installation)
@@ -45,6 +49,211 @@ Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md)
   - **Memories**: Long-term persistent user context.
   - **Experiences**: Records of past bug fixes and technical lessons learned (`experience_ops.py`).
   - **Self Upgrade**: Yolo can optimize its own skills and schedule background/cron tasks (`cron_ops.py`).
+
+---
+
+## System Architecture & Flows
+
+This section provides a technical deep-dive into the inner workings of Project Yolo.
+
+### 1. High-Level Architecture
+Project Yolo is built on a "Decoupled Agent Core" pattern. The core cognitive logic is independent of the gateway (Telegram, CLI, Desktop, etc.).
+
+```mermaid
+graph TD
+    User((User))
+    
+    subgraph Gateways
+        TG[Telegram Bot]
+        DS[Discord Bot]
+        CLI[CLI Tool]
+        TUI[Terminal UI]
+        DK[Desktop Electron App]
+    end
+    
+    subgraph CoreEngine[Agent Core]
+        Router[LLM Router]
+        Session[Session Manager]
+        Prompt[Prompt Builder]
+        AgentLoop[Cognitive Loop]
+    end
+    
+    subgraph ToolSystem[Tool Execution]
+        Dispatcher[Tool Dispatcher]
+        OS[OS & File Tools]
+        GUI[GUI Perception]
+        Web[Stealth Browser]
+        Mem[Memory & Experiences]
+    end
+    
+    User <--> Gateways
+    Gateways <--> AgentLoop
+    AgentLoop <--> Router
+    AgentLoop <--> Session
+    AgentLoop <--> Dispatcher
+    Dispatcher <--> OS
+    Dispatcher <--> GUI
+    Dispatcher <--> Web
+    Dispatcher <--> Mem
+```
+
+### 2. Agent Cognitive Loop (The "Think-Act-Observe" Cycle)
+The agent doesn't just call tools; it reasons, plans, and validates.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Agent Core
+    participant L as LLM (OpenAI/Anthropic)
+    participant T as Tool Dispatcher
+    participant S as Session Memory
+
+    U->>A: Task (e.g., "Fix the bug in main.js")
+    A->>S: Fetch Context & Memories
+    A->>A: Build Prompt (System + Context + History)
+    
+    loop Cognitive Cycle
+        A->>L: Think & Plan (with Tools)
+        L-->>A: Reason + Tool Calls
+        A->>T: Execute Tools (Parallel)
+        T-->>A: Tool Results
+        A->>S: Update History
+        Note over A: Evaluate: Is task complete?
+    end
+    
+    A->>U: Final Answer / Confirmation
+```
+
+### 3. GUI Perception Pipeline (UI-TARS Inspired)
+How the agent "sees" and interacts with your desktop.
+
+```mermaid
+flowchart LR
+    Start([Action Needed]) --> Snap[Take Screenshot]
+    Snap --> OCR[Run Tesseract OCR]
+    OCR --> SoM[Set-of-Mark Overlay]
+    SoM --> Ground[Grounding: Match Query to Element]
+    Ground --> Coord[Extract Coordinates]
+    Coord --> Move[Mouse Move & Click]
+    Move --> Trans[Observe Transition]
+    Trans --> End([Action Verified])
+    
+    subgraph Grounding Logic
+        Ground -- Fuzzy Match --> Match{Match Found?}
+        Match -- No --> HallucinationGuard[Return Element List to LLM]
+    end
+```
+
+### 4. Self-Evolution & Experience Learning
+How Yolo gets smarter over time by fixing its own bugs.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> TaskExecution: User Request
+    TaskExecution --> ErrorDetected: Tool Fails / Bug Found
+    ErrorDetected --> SelfUpgradeMode: Start Self-Upgrade Cycle
+    
+    state SelfUpgradeMode {
+        [*] --> AnalyzeError
+        AnalyzeError --> GenerateFix: Modify Source Code
+        GenerateFix --> Validate: Run Pytest/Lint
+        Validate --> CommitFix: Git Commit
+    }
+    
+    SelfUpgradeMode --> LearnExperience: Resolution Successful
+    LearnExperience --> Idle: Archive Lesson (Mem0)
+    
+    note right of LearnExperience: "Experienced" agent avoids the same mistake next time.
+```
+
+### 5. Stealth Browsing Architecture (Camoufox)
+Bypassing anti-bot measures for deep research.
+
+```mermaid
+graph TD
+    Agent --> Nav[Navigate to URL]
+    Nav --> Camou[Camoufox Browser]
+    
+    subgraph Fingerprint Resistance
+        Camou --> UA[Randomize User Agent]
+        Camou --> JS[Humanize JS Runtime]
+        Camou --> M[Human Mouse Paths]
+    end
+    
+    Camou --> Scrap[Crawl Steps]
+    Scrap --> Scroll[Human-like Scroll Bursts]
+    Scrap --> Extract[Link & Text Extraction]
+    Scrap --> Next[Auto-Next Pagination]
+    
+    Extract --> Data[Structured Intelligence]
+```
+
+### 6. Multi-Tool Execution & HITL Safety
+Handling parallel tool calls and Human-In-The-Loop safety.
+
+```mermaid
+flowchart TD
+    Calls[LLM Requests 3 Tool Calls] --> Check{YOLO Mode?}
+    Check -- Yes --> Parallel[Parallel Execution: asyncio.gather]
+    Check -- No --> Sensitive{Destructive / Sensitive?}
+    
+    Sensitive -- No --> Parallel
+    Sensitive -- Yes --> HITL[Pending Confirmation]
+    
+    HITL --> UserApprove{User Approves?}
+    UserApprove -- Yes --> Parallel
+    UserApprove -- No --> Deny[Return 'Action Denied']
+    
+    Parallel --> Results[Merge Results]
+    Results --> Feedback[Return to LLM]
+```
+
+---
+
+## Desktop Interface
+
+The Yolo Desktop app is a premium Electron-based interface for interacting with the Yolo AI agent. It provides a real-time, fluid chat experience with syntax highlighting and markdown support.
+
+### 🏗️ Desktop Architecture
+
+```mermaid
+graph LR
+    UI[Electron Renderer] <--> Main[Electron Main Process]
+    Main <--> Bridge[Python API Bridge]
+    Bridge <--> Agent[Yolo Agent Core]
+```
+
+- **Renderer**: Built with vanilla HTML/JS and `motion` for smooth animations.
+- **Main**: Handles system-level events and bridge communication.
+- **API Bridge**: (`api_bridge.py`) Exposes the agent's cognitive loop via an IPC channel or local socket.
+
+---
+
+## Tool System
+
+Project Yolo is equipped with a vast library of 60+ specialized tools that allow it to interact with the OS, web, and its own codebase.
+
+### 🛠️ Core Tool Categories
+
+- **GUI Perception (`gui_ops.py`)**: UI-TARS Grounding, SoM numbered overlays, and state transition validation.
+- **Stealth Browsing (`browser_ops.py`)**: Camoufox engine with humanized mouse paths and automated pagination.
+- **File & OS Operations (`file_ops.py`, `system_ops.py`)**: Filesystem mastery and bash execution with parallel background support.
+- **Memory & Evolution (`memory_ops.py`, `experience_ops.py`)**: Long-term persistence via vector DB and automated technical lesson learning.
+
+### 🏗️ Tool Dispatcher Flow
+
+```mermaid
+graph TD
+    LLM[LLM Tool Call] --> Reg[Registry Lookup]
+    Reg --> Inject[Context Injection: user_id, session, etc.]
+    Inject --> Exec[Execution: Sync/Async]
+    Exec --> Parallel[Parallel Gather: if multiple]
+    Parallel --> Sanitize[History Sanitization]
+    Sanitize --> Feedback[Return to LLM]
+```
+
+---
 
 ## Architecture & Internals
 
