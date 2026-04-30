@@ -479,7 +479,24 @@ def _build_memory_context(
     *,
     all_results: Any = None,
 ) -> Optional[str]:
-    if not memory_service or not user_msg:
+    if not memory_service:
+        return None
+
+    from tools.yolo_memory import TieredMemoryEngine
+    if isinstance(memory_service, TieredMemoryEngine):
+        working_mem = memory_service.working_memory_get(user_id)
+        
+        sections = []
+        if working_mem:
+            wm_str = "\n".join(f"- {k}: {v}" for k,v in working_mem.items())
+            sections.append(f"## Working memory (current task)\n{wm_str}")
+            
+        if sections:
+            return "[MEMORY_CONTEXT]\n" + "\n\n".join(sections) + "\n[/MEMORY_CONTEXT]"
+        return None
+
+    # Legacy mem0 logic
+    if not user_msg:
         return None
 
     try:
