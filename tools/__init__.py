@@ -482,6 +482,43 @@ TOOLS_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "working_memory_set",
+            "description": "Write a key-value scratchpad note for the current task.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                    "value": {"type": "string"}
+                },
+                "required": ["key", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "working_memory_get",
+            "description": "Read all working memory for the current task.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "working_memory_clear",
+            "description": "Wipe scratchpad after task completes.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "memory_add",
             "description": "Remember a user fact.",
             "parameters": {

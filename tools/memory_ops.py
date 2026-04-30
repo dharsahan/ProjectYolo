@@ -73,3 +73,30 @@ def memory_wipe(user_id: int) -> str:
     except Exception as e:
         audit_log("memory_wipe", {"user_id": user_id}, "error", str(e))
         return f"Error wiping memories: {e}"
+
+# --- TieredMemoryEngine Working Memory Tools ---
+
+from tools.yolo_memory import TieredMemoryEngine
+
+# Initialize a global instance specifically for the explicit tools
+_tiered_engine = TieredMemoryEngine()
+
+@register_tool()
+def working_memory_set(key: str, value: str, user_id: int = 0) -> str:
+    """Write a scratchpad note for the current task."""
+    _tiered_engine.working_memory_set(user_id, key, value)
+    return f"Working memory set: {key} = {value}"
+
+@register_tool()
+def working_memory_get(user_id: int = 0) -> str:
+    """Read all working memory for the current task."""
+    mem = _tiered_engine.working_memory_get(user_id)
+    if not mem:
+        return "Working memory is empty."
+    return "\n".join(f"{k}: {v}" for k, v in mem.items())
+
+@register_tool()
+def working_memory_clear(user_id: int = 0) -> str:
+    """Wipe scratchpad after task completes."""
+    _tiered_engine.working_memory_clear(user_id)
+    return "Working memory cleared."
