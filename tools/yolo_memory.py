@@ -61,3 +61,39 @@ class TieredMemoryEngine:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             return [row['name'] for row in cursor.fetchall()]
+
+    def working_memory_set(self, user_id: int, key: str, value: str):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO L1_working_memory (user_id, key, value)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value, created_at=CURRENT_TIMESTAMP
+            """, (user_id, key, value))
+            conn.commit()
+
+    def working_memory_get(self, user_id: int) -> dict:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT key, value FROM L1_working_memory WHERE user_id = ?", (user_id,))
+            return {row['key']: row['value'] for row in cursor.fetchall()}
+
+    def working_memory_clear(self, user_id: int):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM L1_working_memory WHERE user_id = ?", (user_id,))
+            conn.commit()
+
+    def _score_importance(self, text: str, category: str) -> float:
+        # Simple heuristic hybrid scoring
+        score = 5.0
+        text_lower = text.lower()
+        if category == "identity" or "my name is" in text_lower:
+            score += 4.0
+        elif category == "preference" or "always" in text_lower or "never" in text_lower:
+            score += 3.0
+        
+        if len(text) < 5 and category not in ["identity", "preference"]:
+            score -= 4.0
+            
+        return min(max(score, 0.0), 10.0)
