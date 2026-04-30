@@ -1,0 +1,66 @@
+<h2>Project Yolo: High-Level Architecture</h2>
+<p class="subtitle">System decomposition into Core, Gateways, and Workers</p>
+
+<div class="mockup">
+  <div class="mockup-header">Architectural Map</div>
+  <div class="mockup-body">
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+      <!-- Core -->
+      <div style="border: 2px solid #4a90e2; padding: 15px; border-radius: 8px; width: 250px;">
+        <h3 style="color: #4a90e2; text-align: center;">The Brain (Core)</h3>
+        <ul style="font-size: 0.9em; padding-left: 20px;">
+          <li><strong>agent.py</strong>: Orchestrator</li>
+          <li><strong>llm_router.py</strong>: Multi-LLM logic</li>
+          <li><strong>prompt_builder.py</strong>: Context & Memory</li>
+          <li><strong>tool_dispatcher.py</strong>: Tool execution</li>
+        </ul>
+      </div>
+
+      <!-- Arrow -->
+      <div style="display: flex; align-items: center; font-size: 2em; color: #666;">&harr;</div>
+
+      <!-- Gateways -->
+      <div style="border: 2px solid #50e3c2; padding: 15px; border-radius: 8px; width: 250px;">
+        <h3 style="color: #50e3c2; text-align: center;">The Senses (Gateways)</h3>
+        <ul style="font-size: 0.9em; padding-left: 20px;">
+          <li><strong>tui.py</strong>: Interactive terminal</li>
+          <li><strong>bot.py / discord</strong>: Chat platforms</li>
+          <li><strong>Electron App</strong>: Visual desktop UI</li>
+          <li><strong>API Bridge</strong>: HTTP/SSE bridge</li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin-top: 20px;">
+      <!-- Knowledge -->
+      <div style="border: 2px solid #f5a623; padding: 15px; border-radius: 8px; width: 250px;">
+        <h3 style="color: #f5a623; text-align: center;">Knowledge & State</h3>
+        <ul style="font-size: 0.9em; padding-left: 20px;">
+          <li><strong>session.py</strong>: Live conversation state</li>
+          <li><strong>yolo_v2.db</strong>: SQLite persistence</li>
+          <li><strong>mem0</strong>: Long-term memory</li>
+          <li><strong>Qdrant</strong>: Vector DB for RAG</li>
+        </ul>
+      </div>
+
+      <!-- Arrow -->
+      <div style="display: flex; align-items: center; font-size: 2em; color: #666; transform: rotate(90deg);">&harr;</div>
+
+      <!-- Workers -->
+      <div style="border: 2px solid #d0021b; padding: 15px; border-radius: 8px; width: 250px;">
+        <h3 style="color: #d0021b; text-align: center;">The Muscles (Workers)</h3>
+        <ul style="font-size: 0.9em; padding-left: 20px;">
+          <li><strong>worker.py</strong>: Autonomous tasks</li>
+          <li><strong>yolo-core (Rust)</strong>: High-performance</li>
+          <li><strong>monitoring.py</strong>: System health</li>
+          <li><strong>tools/</strong>: 20+ specialized tools</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 20px;">
+  <h3>Key Discovery: Functional Gateway Pattern</h3>
+  <p>Instead of complex inheritance, Project Yolo uses a consistent functional contract: all gateways call <code>run_agent_turn</code> and process a stream of <code>TUIMessage</code> packets via a <code>signal_handler</code>. This makes it incredibly easy to add new interfaces.</p>
+</div>

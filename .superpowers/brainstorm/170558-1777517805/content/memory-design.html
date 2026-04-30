@@ -1,0 +1,63 @@
+<h2>TieredMemoryEngine: Design Overview</h2>
+<p class="subtitle">Replacing flat vector search with a 4-tier cognitive architecture</p>
+
+<div class="split" style="gap: 20px;">
+  <!-- Left Side: Database Schema -->
+  <div class="mockup" style="flex: 1;">
+    <div class="mockup-header">SQLite Schema (Table-per-Tier)</div>
+    <div class="mockup-body">
+      <ul style="list-style-type: none; padding: 0;">
+        <li style="margin-bottom: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+          <strong>L1_working_memory</strong>
+          <div style="font-size: 0.85em; color: #666;">user_id, key, value, created_at</div>
+        </li>
+        <li style="margin-bottom: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+          <strong>L2_episodic_memory</strong>
+          <div style="font-size: 0.85em; color: #666;">id, user_id, event, importance, created_at</div>
+        </li>
+        <li style="margin-bottom: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+          <strong>L3_semantic_memory</strong> (FTS5 enabled)
+          <div style="font-size: 0.85em; color: #666;">id, user_id, fact, category, importance, created_at, updated_at</div>
+        </li>
+        <li style="margin-bottom: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+          <strong>L4_pattern_memory</strong>
+          <div style="font-size: 0.85em; color: #666;">id, user_id, pattern, confidence, created_at, updated_at</div>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Right Side: Data Flow -->
+  <div class="mockup" style="flex: 1;">
+    <div class="mockup-header">Consolidation Flow (Inline Sync)</div>
+    <div class="mockup-body" style="font-size: 0.9em; line-height: 1.5;">
+      <ol style="padding-left: 20px;">
+        <li><strong>Turn Ends:</strong> Agent emits memory events.</li>
+        <li><strong>Scoring:</strong> Hybrid heuristic assigns importance (0-10).</li>
+        <li><strong>L2 Insertion:</strong> Event stored in <code>L2_episodic_memory</code>.</li>
+        <li><strong>Threshold Check:</strong> If <code>count(L2) &gt; 20</code>, trigger sync consolidation.</li>
+        <li><strong>Consolidation:</strong> L2 events analyzed. High-importance promoted to <code>L3_semantic</code>. Patterns inferred to <code>L4_pattern</code>. Old L2 events cleared.</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 20px;">
+  <h3>Prompt Injection Structure</h3>
+  <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; font-size: 0.85em;">
+[MEMORY_CONTEXT]
+## Working memory (current task)
+- current_goal: Build auth middleware
+- files_modified: src/auth.ts
+
+## Core identity
+- My name is Dharshan
+
+## Relevant knowledge (Semantic - L3)
+**experience**
+- Fixed JWT expire bug by adding refresh token rotation
+
+## Behavioural patterns (L4)
+- Writes Python automation scripts for repetitive tasks
+[/MEMORY_CONTEXT]</pre>
+</div>
