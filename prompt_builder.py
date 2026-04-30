@@ -357,8 +357,14 @@ def _derive_identity_hints(memory_lines: List[str]) -> List[str]:
         lower = line.lower()
         if "name is " in lower:
             idx = lower.find("name is ")
-            value = line[idx + len("name is ") :].strip(" .:-")
+            value = line[idx + len("name is ") :].split()[0].strip(" .:-")
             if value:
+                hints.append(f"User name: {value}")
+                break
+        elif "i am " in lower:
+            idx = lower.find("i am ")
+            value = line[idx + len("i am ") :].split()[0].strip(" .:-")
+            if value and value not in ["a", "an", "the", "not", "just", "only"]:
                 hints.append(f"User name: {value}")
                 break
     return hints
@@ -484,12 +490,37 @@ def _build_memory_context(
 
     from tools.yolo_memory import TieredMemoryEngine
     if isinstance(memory_service, TieredMemoryEngine):
-        working_mem = memory_service.working_memory_get(user_id)
-        
         sections = []
+        
+        # Working memory
+        working_mem = memory_service.working_memory_get(user_id)
         if working_mem:
             wm_str = "\n".join(f"- {k}: {v}" for k,v in working_mem.items())
             sections.append(f"## Working memory (current task)\n{wm_str}")
+            
+        # Long-term knowledge (L3 + L2)
+        # Search relevant
+        try:
+            search_results = memory_service.search(user_msg, filters={"user_id": str(user_id)}, limit=5)
+        except Exception:
+            search_results = []
+            
+        # Get all for identity hints
+        if all_results is None:
+            try:
+                all_results = memory_service.get_all(filters={"user_id": str(user_id)})
+            except Exception:
+                all_results = []
+                
+        all_lines = _extract_memory_lines(all_results, limit=20)
+        identity_hints = _derive_identity_hints(all_lines)
+        
+        if identity_hints:
+            sections.append("## Core identity\n" + "\n".join(f"- {h}" for h in identity_hints))
+            
+        relevant_lines = _extract_memory_lines(search_results, limit=6)
+        if relevant_lines:
+            sections.append("## Relevant knowledge\n" + "\n".join(f"- {line}" for line in relevant_lines))
             
         if sections:
             return "[MEMORY_CONTEXT]\n" + "\n\n".join(sections) + "\n[/MEMORY_CONTEXT]"

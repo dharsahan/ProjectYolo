@@ -88,7 +88,7 @@ class TieredMemoryEngine:
         # Simple heuristic hybrid scoring
         score = 5.0
         text_lower = text.lower()
-        if category == "identity" or "my name is" in text_lower:
+        if category == "identity" or "my name is" in text_lower or "i am" in text_lower:
             score += 4.0
         elif category == "preference" or "always" in text_lower or "never" in text_lower:
             score += 3.0
@@ -98,9 +98,21 @@ class TieredMemoryEngine:
             
         return min(max(score, 0.0), 10.0)
 
-    def add(self, fact: str, user_id: str):
+    def add(self, fact, user_id: str):
         uid = int(user_id)
-        importance = self._score_importance(fact, "fact")
+        
+        if isinstance(fact, list):
+            text_parts = []
+            for msg in fact:
+                if isinstance(msg, dict) and "content" in msg and "role" in msg:
+                    text_parts.append(f"{msg['role']}: {msg['content']}")
+            fact_str = "\n".join(text_parts)
+        elif isinstance(fact, dict) and "content" in fact:
+            fact_str = fact["content"]
+        else:
+            fact_str = str(fact)
+            
+        importance = self._score_importance(fact_str, "fact")
         if importance < 3.0:
             return  # Noise
             
@@ -110,7 +122,7 @@ class TieredMemoryEngine:
             cursor.execute("""
                 INSERT INTO L2_episodic_memory (user_id, event, importance)
                 VALUES (?, ?, ?)
-            """, (uid, fact, importance))
+            """, (uid, fact_str, importance))
             
             # Check threshold
             cursor.execute("SELECT count(*) FROM L2_episodic_memory WHERE user_id = ?", (uid,))
@@ -149,20 +161,43 @@ class TieredMemoryEngine:
 
     def search(self, query: str, filters: dict = None, limit: int = 8) -> list:
         uid = int(filters.get("user_id", 0)) if filters else 0
+        
+        # Tokenize query for better matching, keep standard words
+        terms = [t.strip('"?.,!') for t in query.split() if len(t.strip('"?.,!')) >= 2]
+        
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            # Basic FTS5 search
-            safe_query = query.replace('"', '""')
-            try:
-                cursor.execute(f"""
-                    SELECT fact FROM L3_semantic_memory 
-                    WHERE user_id = ? AND L3_semantic_memory MATCH '"{safe_query}"'
-                    LIMIT ?
-                """, (uid, limit))
-                return [{"memory": row['fact']} for row in cursor.fetchall()]
-            except sqlite3.OperationalError:
-                # Fallback to get_all if FTS parsing fails
-                return self.get_all(filters)[:limit]
+            results = []
+            
+            if terms:
+                fts_query = " OR ".join(terms)
+                like_queries = [f"%{t}%" for t in terms]
+                
+                try:
+                    cursor.execute(f"""
+                        SELECT fact FROM L3_semantic_memory 
+                        WHERE user_id = ? AND L3_semantic_memory MATCH ?
+                        LIMIT ?
+                    """, (uid, fts_query, limit))
+                    results.extend([{"memory": row['fact']} for row in cursor.fetchall()])
+                except sqlite3.OperationalError:
+                    pass
+                    
+                # Search L2 with LIKE
+                if len(results) < limit:
+                    where_clause = " OR ".join(["event LIKE ?"] * len(like_queries))
+                    cursor.execute(f"""
+                        SELECT event FROM L2_episodic_memory 
+                        WHERE user_id = ? AND ({where_clause})
+                        LIMIT ?
+                    """, [uid] + like_queries + [limit - len(results)])
+                    results.extend([{"memory": row['event']} for row in cursor.fetchall()])
+            
+            # Fallback to recent events if no search results
+            if not results:
+                return self.get_all(filters)[-limit:]
+                
+            return results
 
     def delete(self, memory_id: str):
         with self._get_connection() as conn:
