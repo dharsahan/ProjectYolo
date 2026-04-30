@@ -121,6 +121,8 @@ def _extract_memory_context_payload(memory_context: str) -> str:
     lines = (memory_context or "").splitlines()
     if lines and lines[0].strip() == "[MEMORY_CONTEXT]":
         lines = lines[1:]
+    if lines and lines[-1].strip() == "[/MEMORY_CONTEXT]":
+        lines = lines[:-1]
     return "\n".join(line for line in lines if line.strip()).strip()
 
 
@@ -759,7 +761,6 @@ def _build_template_driven_system_prompt(profile: Optional[str] = None) -> str:
             + AUTO_FACTS_START
             + "\n{{basic_facts}}\n"
             + AUTO_FACTS_END
-            + "\n\nIdentity Hints\n{{identity_hints}}"
         )
     return _render_prompt_template(template, basic_facts=[], identity_hints=[])
 
@@ -791,6 +792,10 @@ def _merge_memory_context_into_system_prompt(
         session.history_dirty = True
 
     base_content = str(session.message_history[0].get("content") or "")
+    
+    # Strip out any legacy hardcoded empty identity hints to prevent conflicts with the injected memory context
+    base_content = base_content.replace("### Identity Hints\n- (none yet)", "").strip()
+    
     payload = _extract_memory_context_payload(memory_context or "")
     merged = _replace_tag_block(
         base_content,
@@ -798,7 +803,7 @@ def _merge_memory_context_into_system_prompt(
         MEMORY_CONTEXT_TRANSIENT_END,
         payload,
     )
-    if merged != base_content:
+    if merged != str(session.message_history[0].get("content") or ""):
         session.message_history[0]["content"] = merged
         session.history_dirty = True
 
