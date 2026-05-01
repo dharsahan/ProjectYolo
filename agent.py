@@ -150,9 +150,22 @@ async def run_agent_turn(
                     func_name = tool_call["function"]["name"]
                     tc_id = tool_call["id"]
                     try:
-                        args = json.loads(tool_call["function"].get("arguments", "{}"))
+                        args = json.loads(tool_call["function"].get("arguments", "{}"), strict=False)
                     except Exception:
                         args = {}
+
+                    if "_invalid_json" in args:
+                        res = f"Error: Your tool call arguments were not valid JSON. Exception: {args.get('_error')}\nYou sent: {args.get('_invalid_json')}\nPlease fix your JSON syntax (e.g. properly escape newlines as \\n and quotes) and try again."
+                        session.message_history.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "name": func_name,
+                                "content": res,
+                            }
+                        )
+                        session.history_dirty = True
+                        continue
 
                     if not isinstance(args, dict):
                         args = {}
@@ -370,11 +383,11 @@ async def run_agent_turn(
                     else:
                         # Optional: attempt to validate JSON to avoid 400s on broken strings
                         try:
-                            json.loads(tc["function"]["arguments"])
-                        except Exception:
-                            # If it's not valid JSON, we default to {} to prevent a 400 error
-                            # from the provider on the next turn.
-                            tc["function"]["arguments"] = "{}"
+                            json.loads(tc["function"]["arguments"], strict=False)
+                        except Exception as e:
+                            # If it's not valid JSON, we wrap it in a valid JSON object so we don't get a 400 error
+                            # from the provider on the next turn, while preserving the bad input so the agent sees the error.
+                            tc["function"]["arguments"] = json.dumps({"_invalid_json": tc["function"]["arguments"], "_error": str(e)})
                     
                     # Ensure 'id' is not empty if the model failed to provide one
                     if not tc.get("id"):

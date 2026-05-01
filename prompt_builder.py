@@ -142,8 +142,14 @@ async def _compact_history(session: Session, router: LLMRouter) -> None:
     if session.message_history and session.message_history[0].get("role") == "system":
         system_prompt = session.message_history[0]
 
-    # Keep last N messages to maintain immediate context
+    # Keep last N messages to maintain immediate context, ensuring we don't sever tool call sequences.
+    # We walk backward until we find a 'user' message, which is always safe to start a sequence with.
     keep_last = 6
+    while keep_last < len(session.message_history):
+        if session.message_history[-keep_last].get("role") == "user":
+            break
+        keep_last += 1
+
     if system_prompt:
         to_summarize = session.message_history[1:-keep_last]
     else:
