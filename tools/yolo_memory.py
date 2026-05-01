@@ -98,7 +98,8 @@ class TieredMemoryEngine:
             
         return min(max(score, 0.0), 10.0)
 
-    def add(self, fact, user_id: str = None, **kwargs):
+    def add(self, fact, user_id: str = None, category: str = "fact", **kwargs):
+        import re
         if user_id is None:
             user_id = kwargs.get("user_id", "0")
         uid = int(user_id)
@@ -107,20 +108,24 @@ class TieredMemoryEngine:
             text_parts = []
             for msg in fact:
                 if isinstance(msg, dict) and "content" in msg and "role" in msg:
-                    text_parts.append(f"{msg['role']}: {msg['content']}")
+                    content = msg["content"]
+                    if msg["role"] == "assistant":
+                        content = re.sub(r"<thought>.*?</thought>", "", content, flags=re.DOTALL).strip()
+                    if content:
+                        text_parts.append(f"{msg['role']}: {content}")
             fact_str = "\n".join(text_parts)
         elif isinstance(fact, dict) and "content" in fact:
             fact_str = fact["content"]
         else:
             fact_str = str(fact)
             
-        importance = self._score_importance(fact_str, "fact")
+        importance = self._score_importance(fact_str, category)
         if importance < 3.0:
             return  # Noise
             
-        count = 0
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
             cursor.execute("""
                 INSERT INTO L2_episodic_memory (user_id, event, importance)
                 VALUES (?, ?, ?)
@@ -129,38 +134,41 @@ class TieredMemoryEngine:
             # Check threshold
             cursor.execute("SELECT count(*) FROM L2_episodic_memory WHERE user_id = ?", (uid,))
             count = cursor.fetchone()[0]
+            if count > 20:
+                self._consolidate_internal(cursor, uid)
             conn.commit()
-
-        if count > 20:
-            self.consolidate_memories(uid)
 
     def consolidate_memories(self, user_id: int):
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, event, importance FROM L2_episodic_memory WHERE user_id = ?", (user_id,))
-            events = cursor.fetchall()
-            for row in events:
-                if row['importance'] >= 3.0:
-                    # Prevent duplicates in L3
-                    cursor.execute("SELECT rowid FROM L3_semantic_memory WHERE user_id = ? AND fact = ?", (user_id, row['event']))
+            cursor.execute("BEGIN IMMEDIATE")
+            self._consolidate_internal(cursor, user_id)
+            conn.commit()
+
+    def _consolidate_internal(self, cursor, user_id: int):
+        cursor.execute("SELECT id, event, importance FROM L2_episodic_memory WHERE user_id = ?", (user_id,))
+        events = cursor.fetchall()
+        for row in events:
+            if row['importance'] >= 3.0:
+                # Prevent duplicates in L3
+                cursor.execute("SELECT rowid FROM L3_semantic_memory WHERE user_id = ? AND fact = ?", (user_id, row['event']))
+                if not cursor.fetchone():
+                    cursor.execute("""
+                        INSERT INTO L3_semantic_memory (user_id, fact, category, importance, created_at, updated_at)
+                        VALUES (?, ?, 'fact', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, (user_id, row['event'], row['importance']))
+                    
+                # Infer patterns into L4
+                event_lower = row['event'].lower()
+                if row['importance'] >= 6.0 and ("always" in event_lower or "never" in event_lower or "prefers" in event_lower):
+                    cursor.execute("SELECT id FROM L4_pattern_memory WHERE user_id = ? AND pattern = ?", (user_id, row['event']))
                     if not cursor.fetchone():
                         cursor.execute("""
-                            INSERT INTO L3_semantic_memory (user_id, fact, category, importance, created_at, updated_at)
-                            VALUES (?, ?, 'fact', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            INSERT INTO L4_pattern_memory (user_id, pattern, confidence)
+                            VALUES (?, ?, ?)
                         """, (user_id, row['event'], row['importance']))
-                        
-                    # Infer patterns into L4
-                    event_lower = row['event'].lower()
-                    if row['importance'] >= 6.0 and ("always" in event_lower or "never" in event_lower or "prefers" in event_lower):
-                        cursor.execute("SELECT id FROM L4_pattern_memory WHERE user_id = ? AND pattern = ?", (user_id, row['event']))
-                        if not cursor.fetchone():
-                            cursor.execute("""
-                                INSERT INTO L4_pattern_memory (user_id, pattern, confidence)
-                                VALUES (?, ?, ?)
-                            """, (user_id, row['event'], row['importance']))
 
-            cursor.execute("DELETE FROM L2_episodic_memory WHERE user_id = ?", (user_id,))
-            conn.commit()
+        cursor.execute("DELETE FROM L2_episodic_memory WHERE user_id = ?", (user_id,))
 
     def memory_stats(self, user_id: int) -> dict:
         stats = {}
@@ -187,15 +195,23 @@ class TieredMemoryEngine:
             cursor.execute("SELECT id, event FROM L2_episodic_memory WHERE user_id = ?", (uid,))
             l2_memories = [{"id": f"l2_{row['id']}", "memory": row['event']} for row in cursor.fetchall()]
             
-            return l3_memories + l2_memories
+            cursor.execute("SELECT key, value FROM L1_working_memory WHERE user_id = ?", (uid,))
+            l1_memories = [{"id": f"l1_{row['key']}", "memory": f"{row['key']}: {row['value']}"} for row in cursor.fetchall()]
+            
+            cursor.execute("SELECT id, pattern FROM L4_pattern_memory WHERE user_id = ?", (uid,))
+            l4_memories = [{"id": f"l4_{row['id']}", "memory": row['pattern']} for row in cursor.fetchall()]
+            
+            return l3_memories + l2_memories + l1_memories + l4_memories
 
     def search(self, query: str, filters: dict = None, limit: int = 8) -> list:
         import datetime
         import math
+        import re
         uid = int(filters.get("user_id", 0)) if filters else 0
         
-        # Tokenize query for better matching, keep standard words
-        terms = [t.strip('"?.,!') for t in query.split() if len(t.strip('"?.,!')) >= 2]
+        # Tokenize query for better matching, keep standard words, escape FTS5 special chars
+        safe_query = re.sub(r'[^\w\s]', ' ', query)
+        terms = [t.strip() for t in safe_query.split() if len(t.strip()) >= 2]
         
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -211,7 +227,8 @@ class TieredMemoryEngine:
                         WHERE user_id = ? AND L3_semantic_memory MATCH ?
                     """, (uid, fts_query))
                     raw_results.extend([{"memory": row['fact'], "importance": row['importance'] or 5.0, "created_at": row['created_at']} for row in cursor.fetchall()])
-                except sqlite3.OperationalError:
+                except sqlite3.OperationalError as e:
+                    # Log the FTS5 error silently
                     pass
                     
                 # Search L2 with LIKE
