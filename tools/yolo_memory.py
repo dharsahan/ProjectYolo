@@ -223,10 +223,10 @@ class TieredMemoryEngine:
                 
                 try:
                     cursor.execute(f"""
-                        SELECT fact, importance, created_at FROM L3_semantic_memory 
+                        SELECT rowid, fact, importance, created_at FROM L3_semantic_memory 
                         WHERE user_id = ? AND L3_semantic_memory MATCH ?
                     """, (uid, fts_query))
-                    raw_results.extend([{"memory": row['fact'], "importance": row['importance'] or 5.0, "created_at": row['created_at']} for row in cursor.fetchall()])
+                    raw_results.extend([{"id": f"l3_{row['rowid']}", "memory": row['fact'], "importance": row['importance'] or 5.0, "created_at": row['created_at']} for row in cursor.fetchall()])
                 except sqlite3.OperationalError as e:
                     # Log the FTS5 error silently
                     pass
@@ -234,10 +234,18 @@ class TieredMemoryEngine:
                 # Search L2 with LIKE
                 where_clause = " OR ".join(["event LIKE ?"] * len(like_queries))
                 cursor.execute(f"""
-                    SELECT event, importance, created_at FROM L2_episodic_memory 
+                    SELECT id, event, importance, created_at FROM L2_episodic_memory 
                     WHERE user_id = ? AND ({where_clause})
                 """, [uid] + like_queries)
-                raw_results.extend([{"memory": row['event'], "importance": row['importance'] or 5.0, "created_at": row['created_at']} for row in cursor.fetchall()])
+                raw_results.extend([{"id": f"l2_{row['id']}", "memory": row['event'], "importance": row['importance'] or 5.0, "created_at": row['created_at']} for row in cursor.fetchall()])
+                
+                # Search L4 with LIKE
+                where_clause_l4 = " OR ".join(["pattern LIKE ?"] * len(like_queries))
+                cursor.execute(f"""
+                    SELECT id, pattern, confidence, created_at FROM L4_pattern_memory 
+                    WHERE user_id = ? AND ({where_clause_l4})
+                """, [uid] + like_queries)
+                raw_results.extend([{"id": f"l4_{row['id']}", "memory": row['pattern'], "importance": row['confidence'] or 5.0, "created_at": row['created_at']} for row in cursor.fetchall()])
             
             if not raw_results:
                 return []
@@ -265,7 +273,7 @@ class TieredMemoryEngine:
             for _, r in scored_results:
                 if r['memory'] not in seen:
                     seen.add(r['memory'])
-                    final_list.append({"memory": r['memory']})
+                    final_list.append({"id": r["id"], "memory": r['memory']})
                     if len(final_list) >= limit:
                         break
                         

@@ -357,6 +357,9 @@ def _derive_identity_hints(memory_lines: List[str]) -> List[str]:
     hints = []
     for line in memory_lines:
         lower = line.lower()
+        if "assistant:" in lower:
+            lower = lower.split("assistant:")[0]
+            
         if "name is " in lower:
             idx = lower.find("name is ")
             value = line[idx + len("name is ") :].split()[0].strip(" .:-")

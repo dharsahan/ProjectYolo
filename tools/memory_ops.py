@@ -93,37 +93,62 @@ def _get_working_memory_engine():
 @register_tool()
 def working_memory_set(key: str, value: str, user_id: int = 0) -> str:
     """Write a scratchpad note for the current task."""
-    _get_working_memory_engine().working_memory_set(user_id, key, value)
-    return f"Working memory set: {key} = {value}"
+    try:
+        _get_working_memory_engine().working_memory_set(user_id, key, value)
+        audit_log("working_memory_set", {"user_id": user_id, "key": key}, "success")
+        return f"Working memory set: {key} = {value}"
+    except Exception as e:
+        audit_log("working_memory_set", {"user_id": user_id, "key": key}, "error", str(e))
+        return f"Error setting working memory: {e}"
 
 @register_tool()
 def working_memory_get(user_id: int = 0) -> str:
     """Read all working memory for the current task."""
-    mem = _get_working_memory_engine().working_memory_get(user_id)
-    if not mem:
-        return "Working memory is empty."
-    return "\n".join(f"{k}: {v}" for k, v in mem.items())
+    try:
+        mem = _get_working_memory_engine().working_memory_get(user_id)
+        audit_log("working_memory_get", {"user_id": user_id}, "success")
+        if not mem:
+            return "Working memory is empty."
+        return "\n".join(f"{k}: {v}" for k, v in mem.items())
+    except Exception as e:
+        audit_log("working_memory_get", {"user_id": user_id}, "error", str(e))
+        return f"Error getting working memory: {e}"
 
 @register_tool()
 def working_memory_clear(user_id: int = 0) -> str:
     """Wipe scratchpad after task completes."""
-    _get_working_memory_engine().working_memory_clear(user_id)
-    return "Working memory cleared."
+    try:
+        _get_working_memory_engine().working_memory_clear(user_id)
+        audit_log("working_memory_clear", {"user_id": user_id}, "success")
+        return "Working memory cleared."
+    except Exception as e:
+        audit_log("working_memory_clear", {"user_id": user_id}, "error", str(e))
+        return f"Error clearing working memory: {e}"
 
 @register_tool()
 def consolidate_memories(user_id: int = 0) -> str:
     """Manually trigger episodic to semantic promotion."""
-    engine = _get_working_memory_engine()
-    if hasattr(engine, "consolidate_memories"):
-        engine.consolidate_memories(user_id)
-        return "Consolidation complete."
-    return "Consolidation not supported by current memory engine."
+    try:
+        engine = _get_working_memory_engine()
+        if hasattr(engine, "consolidate_memories"):
+            engine.consolidate_memories(user_id)
+            audit_log("consolidate_memories", {"user_id": user_id}, "success")
+            return "Consolidation complete."
+        return "Consolidation not supported by current memory engine."
+    except Exception as e:
+        audit_log("consolidate_memories", {"user_id": user_id}, "error", str(e))
+        return f"Error consolidating memories: {e}"
 
 @register_tool()
 def memory_stats(user_id: int = 0) -> str:
     """Show tier counts, categories, last consolidation."""
-    engine = _get_working_memory_engine()
-    if hasattr(engine, "memory_stats"):
-        stats = engine.memory_stats(user_id)
-        return "\n".join(f"{k}: {v}" for k, v in stats.items())
-    return "Stats not supported by current memory engine."
+    try:
+        engine = _get_working_memory_engine()
+        if hasattr(engine, "memory_stats"):
+            stats = engine.memory_stats(user_id)
+            audit_log("memory_stats", {"user_id": user_id}, "success")
+            return "\n".join(f"{k}: {v}" for k, v in stats.items())
+        return "Stats not supported by current memory engine."
+    except Exception as e:
+        audit_log("memory_stats", {"user_id": user_id}, "error", str(e))
+        return f"Error getting memory stats: {e}"
