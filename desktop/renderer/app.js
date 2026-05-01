@@ -19,6 +19,7 @@
     selectedFiles: [], // Added for visual chips
     activePaletteIndex: -1, // Added for keyboard navigation
     workerStates: {}, // Track task_id -> status
+    bridgePort: 8790, // Default fallback
   };
 
   // ── DOM refs ──
@@ -102,7 +103,10 @@
     }
   }
 
-  function init() {
+  async function init() {
+    try {
+      state.bridgePort = await window.yoloAPI.getBridgePort();
+    } catch {}
     loadPrefs();
     applyTheme();
     bindEvents();
@@ -152,9 +156,26 @@
         savePrefs();
         hydrateFromSession();
       });
+
+      // Hover animation
+      item.addEventListener('mouseenter', () => {
+        if (typeof Motion !== 'undefined') Motion.animate(item, { x: 4, backgroundColor: 'var(--bg-surface-hover)' }, { duration: 0.2 });
+      });
+      item.addEventListener('mouseleave', () => {
+        if (typeof Motion !== 'undefined' && !item.classList.contains('active')) {
+          Motion.animate(item, { x: 0, backgroundColor: 'transparent' }, { duration: 0.2 });
+        } else if (typeof Motion !== 'undefined') {
+          Motion.animate(item, { x: 0 }, { duration: 0.2 });
+        }
+      });
       
       dom.sessionList.appendChild(item);
     });
+
+    if (typeof Motion !== 'undefined') {
+      const items = dom.sessionList.querySelectorAll('.session-item');
+      Motion.animate(items, { opacity: [0, 1], x: [-10, 0] }, { duration: 0.4, delay: Motion.stagger(0.05) });
+    }
   }
 
   function loadPrefs() {
@@ -333,7 +354,30 @@
         try { hljs.highlightElement(block); } catch {}
       });
     } else {
-      if (msg.content && msg.content.includes('🎤 [Voice Message attached]')) {
+      const voiceMatch = msg.content && msg.content.match(/__VOICE_NOTE__:([^\n]+)/);
+      if (voiceMatch) {
+        const audioPath = voiceMatch[1].trim();
+        // audioPath is something like "artifacts/uploads/2026...webm"
+        // The API bridge serves this at /uploads/filename
+        const fileName = audioPath.split('/').pop();
+        const audioUrl = `http://127.0.0.1:${state.bridgePort}/uploads/${fileName}`;
+
+        content.classList.add('voice-note-bubble');
+        content.innerHTML = `
+          <div class="voice-note-card">
+            <div class="voice-play-icon" onclick="this.closest('.voice-note-bubble').querySelector('audio').play()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </div>
+            <div class="voice-waveform">
+              ${Array(12).fill(0).map(() => `<span class="v-bar" style="height: ${Math.floor(Math.random() * 15) + 5}px;"></span>`).join('')}
+            </div>
+            <span class="voice-duration">Play Voice</span>
+            <audio src="${audioUrl}" style="display:none;"></audio>
+          </div>
+          <div class="voice-transcript">${renderMarkdown(msg.content.split('\n\nTranscript:')[1] || '')}</div>
+        `;
+      } else if (msg.content && msg.content.includes('🎤 [Voice Message attached]')) {
+        // Fallback for old messages
         content.classList.add('voice-note-bubble');
         content.innerHTML = `
           <div class="voice-note-card">
@@ -513,7 +557,7 @@
       ? `\n\n[Attached: ${state.selectedFiles.map(f => f.name).join(', ')}]`
       : '';
     const fullText = text + attachedText;
-    const attachments = state.selectedFiles.map(f => ({ name: f.name, content: f.content }));
+    const attachments = state.selectedFiles.map(f => ({ name: f.name, type: f.type, content: f.content }));
 
     const userMsg = { role: 'user', content: fullText, timestamp: Date.now() };
     state.messages.push(userMsg);
@@ -855,24 +899,54 @@
         }
       }
     });
+
+    async function processFile(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          resolve({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            content: event.target.result
+          });
+        };
+        
+        if (file.type.startsWith('image/')) {
+          reader.readAsDataURL(file);
+        } else {
+          reader.readAsText(file);
+        }
+      });
+    }
+
+    dom.input.addEventListener('paste', async (e) => {
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      const filesToProcess = [];
+      
+      for (const item of items) {
+        if (item.kind === 'file') {
+          const file = item.getAsFile();
+          if (file) filesToProcess.push(file);
+        }
+      }
+      
+      if (filesToProcess.length > 0) {
+        const newFiles = await Promise.all(filesToProcess.map(processFile));
+        state.selectedFiles = [...state.selectedFiles, ...newFiles];
+        renderAttachmentChips();
+        dom.sendBtn.disabled = false;
+        
+        if (typeof Motion !== 'undefined') {
+          Motion.animate(dom.attachmentChips, { scale: [0.95, 1], opacity: [0.8, 1] }, { duration: 0.2 });
+        }
+      }
+    });
+
     dom.fileUpload.addEventListener('change', async (e) => {
       if (e.target.files && e.target.files.length > 0) {
         const files = Array.from(e.target.files);
-        const newFiles = await Promise.all(files.map(async f => {
-          return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              resolve({ 
-                name: f.name, 
-                size: f.size, 
-                type: f.type,
-                content: event.target.result 
-              });
-            };
-            // Read as text for simplicity in this phase; can be expanded to Base64 for binary
-            reader.readAsText(f);
-          });
-        }));
+        const newFiles = await Promise.all(files.map(processFile));
         state.selectedFiles = [...state.selectedFiles, ...newFiles];
         renderAttachmentChips();
         dom.input.focus();
@@ -880,7 +954,6 @@
       }
       e.target.value = ''; // Reset for consecutive uploads
     });
-
     // Voice Recording State
     let recordingTimer;
     let recordingSeconds = 0;
@@ -924,14 +997,13 @@
             reader.onloadend = async () => {
               const base64data = reader.result.split(',')[1];
               
-              // Call transcription bridge
-              const res = await window.yoloAPI.transcribe({ audio: base64data });
-              if (res && res.text) {
-                sendMessage(res.text);
-              } else if (res && res.error) {
-                console.error("Transcription error:", res.error);
-                sendMessage("🎤 [Voice Message Transcription Failed]");
-              }
+              // Instead of just transcribing and sending text, we send as a voice attachment
+              state.selectedFiles = [{
+                name: `voice_note_${Date.now()}.webm`,
+                type: 'audio/webm',
+                content: base64data
+              }];
+              sendMessage('🎤 Voice Message');
             };
             
             // Stop all tracks to release microphone
