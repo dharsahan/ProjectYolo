@@ -44,6 +44,7 @@ from tools.file_ops import (
 from tools.identity_ops import read_user_identity, update_user_identity
 from tools.mcp_ops import mcp_list_tools, mcp_run_tool
 from tools.memory_ops import memory_add, memory_delete, memory_list, memory_wipe
+from tools.media_ops import transcribe_audio
 from tools.mission_ops import create_mission, read_mission, update_mission
 from tools.research_ops import (
     research_clear,
@@ -186,6 +187,7 @@ __all__ = [
     "git_stash",
     "codebase_index",
     "codebase_search",
+    "transcribe_audio",
 ]
 
 # Define all schemas in one place for the agent
@@ -519,6 +521,28 @@ TOOLS_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "consolidate_memories",
+            "description": "Manually trigger episodic to semantic memory promotion.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_stats",
+            "description": "Show tier counts, categories, and last consolidation.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "memory_add",
             "description": "Remember a user fact.",
             "parameters": {
@@ -532,13 +556,13 @@ TOOLS_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "memory_delete",
-            "description": "Delete a single specific memory by its unique ID.",
+            "description": "Delete a single specific memory by its unique ID (e.g., l3_1, l2_5).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "memory_id": {
                         "type": "string",
-                        "description": "The unique UUID of the memory to delete.",
+                        "description": "The ID of the memory to delete.",
                     }
                 },
                 "required": ["memory_id"],
@@ -1541,6 +1565,23 @@ TOOLS_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "transcribe_audio",
+            "description": "Transcribe an audio file (mp3, webm, wav, m4a, etc.) into text using the AI pipeline. Supports filenames from the uploads directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to the audio file or just the filename if stored in artifacts/uploads."
+                    }
+                },
+                "required": ["file_path"]
+            }
+        }
+    }
 ]
 
 # Append any dynamically loaded plugin schemas

@@ -487,7 +487,7 @@ def _build_memory_context(
     *,
     all_results: Any = None,
 ) -> Optional[str]:
-    if not memory_service:
+    if not memory_service or not user_msg:
         return None
 
     from tools.yolo_memory import TieredMemoryEngine
@@ -514,7 +514,7 @@ def _build_memory_context(
             except Exception:
                 all_results = []
                 
-        all_lines = _extract_memory_lines(all_results, limit=20)
+        all_lines = _extract_memory_lines(all_results, limit=40)
         identity_hints = _derive_identity_hints(all_lines)
         
         if identity_hints:
@@ -523,6 +523,18 @@ def _build_memory_context(
         relevant_lines = _extract_memory_lines(search_results, limit=6)
         if relevant_lines:
             sections.append("## Relevant knowledge\n" + "\n".join(f"- {line}" for line in relevant_lines))
+            
+        # Behavioral Patterns (L4)
+        if hasattr(memory_service, '_get_connection'):
+            try:
+                with memory_service._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT pattern FROM L4_pattern_memory WHERE user_id = ? ORDER BY confidence DESC LIMIT 5", (user_id,))
+                    patterns = [row['pattern'] for row in cursor.fetchall()]
+                    if patterns:
+                        sections.append("## Behavioural patterns\n" + "\n".join(f"- {p}" for p in patterns))
+            except Exception:
+                pass
             
         if sections:
             return "[MEMORY_CONTEXT]\n" + "\n\n".join(sections) + "\n[/MEMORY_CONTEXT]"
@@ -842,18 +854,23 @@ def _normalize_single_system_message(session: Session) -> None:
             continue
         legacy_appendices.append(content)
 
-    merged = _replace_tag_block(
-        primary_content,
-        MEMORY_CONTEXT_TRANSIENT_START,
-        MEMORY_CONTEXT_TRANSIENT_END,
-        "\n\n".join(memory_payloads),
-    )
-    merged = _replace_tag_block(
-        merged,
-        LEGACY_APPENDIX_START,
-        LEGACY_APPENDIX_END,
-        "\n\n".join(legacy_appendices),
-    )
+    merged = primary_content
+    if memory_payloads:
+        # If we found extra memory payloads in subsequent system messages, replace the existing one
+        merged = _replace_tag_block(
+            merged,
+            MEMORY_CONTEXT_TRANSIENT_START,
+            MEMORY_CONTEXT_TRANSIENT_END,
+            "\n\n".join(memory_payloads),
+        )
+    
+    if legacy_appendices:
+        merged = _replace_tag_block(
+            merged,
+            LEGACY_APPENDIX_START,
+            LEGACY_APPENDIX_END,
+            "\n\n".join(legacy_appendices),
+        )
 
     if merged != primary_content:
         primary["content"] = merged
