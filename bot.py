@@ -86,9 +86,9 @@ TELEGRAM_WEBHOOK_URL_BASE = os.getenv("TELEGRAM_WEBHOOK_URL", "").strip()
 TELEGRAM_WEBHOOK_SECRET_TOKEN = os.getenv("TELEGRAM_WEBHOOK_SECRET_TOKEN", "").strip()
 
 MEDIA_AI_CLIENT: Optional[AsyncOpenAI] = None
-if ENABLE_MEDIA_AI_PIPELINE and OPENAI_API_KEY:
+if ENABLE_MEDIA_AI_PIPELINE and (OPENAI_API_KEY or OPENAI_BASE_URL != "https://api.openai.com/v1"):
     MEDIA_AI_CLIENT = AsyncOpenAI(
-        api_key=OPENAI_API_KEY,
+        api_key=OPENAI_API_KEY or "not-required",
         base_url=OPENAI_BASE_URL,
         timeout=90.0,
     )

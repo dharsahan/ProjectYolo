@@ -32,6 +32,8 @@ from aiohttp import web
 
 import agent as yolo_agent
 from session import SessionManager
+from openai import AsyncOpenAI
+import mimetypes
 
 # ── Shared state (same as bot.py) ──
 TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "60"))
@@ -41,10 +43,120 @@ session_manager: SessionManager = None  # type: ignore
 _allowed = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")
 DEFAULT_USER_ID = int(_allowed.split(",")[0].strip()) if _allowed.strip() else 1
 
+# Vision/AI Pipeline (same as bot.py)
+ENABLE_MEDIA_AI_PIPELINE = os.getenv("ENABLE_MEDIA_AI_PIPELINE", "true").lower() == "true"
+VISION_MODEL_NAME = os.getenv("VISION_MODEL_NAME", os.getenv("MODEL_NAME", "gpt-4o-mini"))
+TRANSCRIPTION_MODEL_NAME = os.getenv("TRANSCRIPTION_MODEL_NAME", "gpt-4o-mini-transcribe")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+
+# Dedicated Vision Provider (optional)
+VISION_API_KEY = os.getenv("VISION_API_KEY", OPENAI_API_KEY)
+VISION_API_BASE_URL = os.getenv("VISION_API_BASE_URL", OPENAI_BASE_URL)
+USE_LOCAL_WHISPER = os.getenv("USE_LOCAL_WHISPER", "false").lower() == "true"
+
+MEDIA_AI_CLIENT = None
+if ENABLE_MEDIA_AI_PIPELINE and (VISION_API_KEY or VISION_API_BASE_URL != "https://api.openai.com/v1"):
+    MEDIA_AI_CLIENT = AsyncOpenAI(
+        api_key=VISION_API_KEY or "not-required",
+        base_url=VISION_API_BASE_URL,
+        timeout=90.0,
+    )
+
+def get_uploads_dir() -> Path:
+    from tools.base import YOLO_ARTIFACTS
+    uploads_dir = Path(YOLO_ARTIFACTS) / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    return uploads_dir
+
 
 # ── HTTP Handlers ──
 
-def handle_attachments(session, attachments):
+async def maybe_extract_image_text(b64_data: str, mime_type: str) -> str:
+    """Extract text/description from a base64 encoded image."""
+    if MEDIA_AI_CLIENT is None:
+        return "[Vision AI not enabled]"
+    
+    try:
+        # data:image/jpeg;base64,... -> extract just the base64 part if needed
+        if "," in b64_data:
+            b64_data = b64_data.split(",")[1]
+
+        response = await MEDIA_AI_CLIENT.chat.completions.create(
+            model=VISION_MODEL_NAME,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Extract as much visible text as possible (OCR) and then give a concise description of the image. Keep the output plain text.",
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{b64_data}",
+                            },
+                        },
+                    ],
+                }
+            ],
+            temperature=0,
+        )
+        if not response.choices:
+            return "[No description generated]"
+        return response.choices[0].message.content or "[Empty response]"
+    except Exception as e:
+        return f"[Image analysis failed: {str(e)}]"
+
+
+async def maybe_transcribe_audio(b64_data: str, filename: str) -> str:
+    """Transcribe base64 encoded audio."""
+    if MEDIA_AI_CLIENT is None:
+        return "[Audio AI not enabled]"
+    
+    import base64
+    from io import BytesIO
+    from datetime import datetime, timezone
+
+    try:
+        if "," in b64_data:
+            b64_data = b64_data.split(",")[1]
+        
+        audio_bytes = base64.b64decode(b64_data)
+        
+        # Save to disk for persistence (like bot.py)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        local_path = get_uploads_dir() / f"{timestamp}_{filename}"
+        with open(local_path, "wb") as f:
+            f.write(audio_bytes)
+        
+        if USE_LOCAL_WHISPER:
+            from whisper_local import transcribe_local
+            text = transcribe_local(str(local_path))
+        else:
+            if MEDIA_AI_CLIENT is None:
+                return "[Audio AI not enabled and local whisper is off]"
+            
+            stream = BytesIO(audio_bytes)
+            stream.name = filename
+            
+            transcription = await MEDIA_AI_CLIENT.audio.transcriptions.create(
+                model=TRANSCRIPTION_MODEL_NAME,
+                file=stream,
+            )
+            
+            text = getattr(transcription, "text", None)
+            if text is None:
+                text = str(transcription)
+        
+        rel_path = os.path.relpath(local_path, os.getcwd())
+        return f"__VOICE_NOTE__:{rel_path}\n\nTranscript: {text.strip()}"
+    except Exception as e:
+        return f"[Audio transcription failed: {str(e)}]"
+
+
+async def handle_attachments(session, attachments):
     """Process attachments by appending them to the session history."""
     if not attachments:
         return
@@ -53,7 +165,38 @@ def handle_attachments(session, attachments):
     for att in attachments:
         name = att.get("name", "unnamed")
         data = att.get("content", "")
-        content += f"\n---\nFile: `{name}`\nContent:\n{data}\n"
+        mime_type = att.get("type")
+        
+        # 1. Improved mime-type detection
+        if not mime_type or mime_type in ["application/octet-stream", "text/plain"]:
+            guessed, _ = mimetypes.guess_type(name)
+            if guessed:
+                mime_type = guessed
+            else:
+                mime_type = mime_type or "text/plain"
+
+        # 2. Process by type
+        if mime_type.startswith("image/"):
+            description = await maybe_extract_image_text(data, mime_type)
+            content += f"\n---\nImage: `{name}`\nDescription/OCR:\n{description}\n"
+        elif mime_type.startswith("audio/"):
+            # Real voice message handling
+            voice_result = await maybe_transcribe_audio(data, name)
+            content += f"\n---\nVoice Message: `{name}`\n{voice_result}\n"
+        else:
+            # 3. Safety check for non-text data
+            # If it starts with data: and it's not text, it's likely a misclassified binary
+            if data.startswith("data:") and ";base64," in data and not mime_type.startswith("text/"):
+                content += f"\n---\nFile: `{name}`\n[Binary data omitted for safety. Type: {mime_type}]\n"
+                continue
+                
+            # If it's too long, it might be a log or large file
+            MAX_TEXT_ATTACHMENT = 50000 # ~12k tokens
+            if len(data) > MAX_TEXT_ATTACHMENT:
+                truncated = data[:MAX_TEXT_ATTACHMENT] + "\n... [TRUNCATED - File too large for direct context] ..."
+                content += f"\n---\nFile: `{name}` (Truncated)\nContent:\n{truncated}\n"
+            else:
+                content += f"\n---\nFile: `{name}`\nContent:\n{data}\n"
     
     session.message_history.append({"role": "user", "content": content})
     session.history_dirty = True
@@ -79,7 +222,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         session = session_manager.get_or_create(user_id)
         
         if attachments:
-            handle_attachments(session, attachments)
+            await handle_attachments(session, attachments)
 
         try:
             response = await yolo_agent.run_agent_turn(
@@ -162,7 +305,7 @@ async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
                 session = session_manager.get_or_create(user_id)
                 
                 if attachments:
-                    handle_attachments(session, attachments)
+                    await handle_attachments(session, attachments)
 
                 try:
                     final = await yolo_agent.run_agent_turn(
@@ -522,19 +665,20 @@ async def handle_transcribe(request: web.Request) -> web.Response:
             tmp.write(audio_bytes)
             tmp_path = tmp.name
 
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key and api_key.startswith("sk-"):
-            client = OpenAI(api_key=api_key)
+        api_key = os.getenv("VISION_API_KEY") or os.getenv("OPENAI_API_KEY")
+        base_url = os.getenv("VISION_API_BASE_URL") or os.getenv("OPENAI_BASE_URL")
+
+        if api_key or (base_url and base_url != "https://api.openai.com/v1"):
+            client = OpenAI(api_key=api_key or "not-required", base_url=base_url)
             with open(tmp_path, "rb") as audio_file:
                 transcript = client.audio.transcriptions.create(
-                    model="whisper-1", 
+                    model=os.getenv("TRANSCRIPTION_MODEL_NAME", "whisper-1"),
                     file=audio_file
                 )
-            text = transcript.text
+            text = getattr(transcript, "text", str(transcript))
         else:
             # Mock transcription for testing
             text = "This is a mock transcription of your voice message."
-
         # Cleanup
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -558,6 +702,14 @@ def create_app() -> web.Application:
     app.router.add_get("/sessions", handle_get_sessions)
     app.router.add_get("/workers", handle_get_workers)
     app.router.add_get("/workers/{task_id}/session", handle_get_worker_session)
+    
+    # Serve static files from artifacts/uploads
+    try:
+        uploads_dir = str(get_uploads_dir())
+        app.router.add_static("/uploads/", path=uploads_dir, name="uploads")
+    except Exception:
+        pass
+        
     return app
 
 
