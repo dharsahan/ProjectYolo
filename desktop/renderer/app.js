@@ -895,10 +895,10 @@
 
   // ── Events ──
   function bindEvents() {
-    dom.messages.addEventListener('click', (e) => {
+    dom.activeWidgetContainer.addEventListener('click', (e) => {
       const btn = e.target.closest('.widget-btn');
       if (!btn) return;
-      
+
       const widget = btn.closest('.dynamic-widget');
       if (!widget || widget.classList.contains('locked')) return;
 
@@ -909,11 +909,15 @@
       // Extract value
       const value = btn.getAttribute('data-value');
       const widgetId = btn.getAttribute('data-widget-id');
-      
+
       // Send the response
       sendMessage(`[Widget Response: ${widgetId}] Selected: ${value}`);
-    });
 
+      // Clear the widget and restore input bar after a brief delay
+      setTimeout(() => {
+        clearActiveWidget();
+      }, 300);
+    });
     dom.sendBtn.addEventListener('click', () => {
       if (!dom.recordingIndicator.classList.contains('hidden')) {
         toggleRecording(false);

@@ -1958,3 +1958,38 @@ body::before {
   border-color: var(--accent-color);
 }
 
+/* --- Textbar-Anchored Widget --- */
+#active-widget-container {
+  width: 100%;
+}
+
+.textbar-widget {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 15px;
+  margin: 0; /* Remove top/bottom margin since it's anchored */
+  font-family: var(--font-body);
+  box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
+}
+
+.widget-cancel {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+  margin-top: 12px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.widget-cancel:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.widget-placeholder {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  padding: 8px 0;
+}
+
