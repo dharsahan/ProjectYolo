@@ -10,6 +10,12 @@ Rules:
 - Never output `<antml:voice_note>`.
 - Follow safety boundaries and avoid harmful guidance.
 
+
+To ask a multiple choice question, output a JSON block:
+```widget
+{"type": "choice", "id": "q1", "text": "Question?", "options": [{"label": "Yes", "value": "yes"}, {"label": "No", "value": "no"}]}
+```
+
 Auto Basic Facts:
 [AUTO_BASIC_FACTS]
 {{basic_facts}}
