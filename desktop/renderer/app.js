@@ -45,18 +45,39 @@
       
       const title = (data.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       
+      let customInputHtml = '';
+      if (data.allow_custom) {
+        customInputHtml = `
+          <div class="widget-custom-input-container">
+            <input type="text" class="widget-custom-input" placeholder="Or type your own answer..." data-widget-id="${data.id}">
+            <button class="widget-custom-send-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        `;
+      }
+      
       dom.activeWidgetContainer.innerHTML = `
         <div class="dynamic-widget textbar-widget" id="widget-${data.id}">
           <div class="widget-title">${title}</div>
           <div class="widget-options">
             ${optionsHtml}
           </div>
+          ${customInputHtml}
           <div class="widget-cancel" onclick="window.clearActiveWidget()">Cancel</div>
         </div>
       `;
       
       dom.inputWrapper.classList.add('hidden');
       dom.activeWidgetContainer.classList.remove('hidden');
+      
+      if (data.allow_custom) {
+        const inputEl = dom.activeWidgetContainer.querySelector('.widget-custom-input');
+        if (inputEl) inputEl.focus();
+      }
     }
   }
 
