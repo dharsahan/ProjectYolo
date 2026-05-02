@@ -22,9 +22,52 @@
     bridgePort: 8790, // Default fallback
   };
 
+  // State to hold the current widget payload
+  window.activeWidgetData = null;
+
+  function clearActiveWidget() {
+    window.activeWidgetData = null;
+    dom.activeWidgetContainer.innerHTML = '';
+    dom.activeWidgetContainer.classList.add('hidden');
+    dom.inputWrapper.classList.remove('hidden');
+    dom.input.focus();
+  }
+
+  function renderActiveWidget(data) {
+    window.activeWidgetData = data;
+    
+    if (data.type === 'choice') {
+      const optionsHtml = (data.options || []).map(opt => {
+        const label = opt.label.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const val = opt.value.replace(/"/g, '&quot;');
+        return `<button class="widget-btn" data-widget-id="${data.id}" data-value="${val}">${label}</button>`;
+      }).join('');
+      
+      const title = (data.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      
+      dom.activeWidgetContainer.innerHTML = `
+        <div class="dynamic-widget textbar-widget" id="widget-${data.id}">
+          <div class="widget-title">${title}</div>
+          <div class="widget-options">
+            ${optionsHtml}
+          </div>
+          <div class="widget-cancel" onclick="window.clearActiveWidget()">Cancel</div>
+        </div>
+      `;
+      
+      dom.inputWrapper.classList.add('hidden');
+      dom.activeWidgetContainer.classList.remove('hidden');
+    }
+  }
+
+  // Expose to window so onclick works
+  window.clearActiveWidget = clearActiveWidget;
+
   // ── DOM refs ──
   const $ = (sel) => document.querySelector(sel);
   const dom = {
+    activeWidgetContainer: document.getElementById('active-widget-container'),
+    inputWrapper: document.querySelector('.input-wrapper'),
     app: $('#app'),
     sidebar: $('#sidebar'),
     sessionList: $('#session-list'),
