@@ -1909,3 +1909,52 @@ body::before {
   text-decoration: underline;
 }
 
+/* --- Dynamic Widgets --- */
+.dynamic-widget {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 12px 0;
+  font-family: var(--font-body);
+}
+
+.dynamic-widget .widget-title {
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+
+.dynamic-widget .widget-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dynamic-widget .widget-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 10px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.dynamic-widget .widget-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+
+.dynamic-widget.locked {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.dynamic-widget.locked .widget-btn[data-selected="true"] {
+  background: var(--accent-color);
+  color: #fff;
+  border-color: var(--accent-color);
+}
+

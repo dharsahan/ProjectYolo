@@ -1329,7 +1329,40 @@
           return `${prefix}@@MATH_INLINE_${mathInline.length - 1}@@`;
         });
 
-        marked.setOptions({ breaks: true, gfm: true });
+        const renderer = new marked.Renderer();
+        const originalCodeRenderer = renderer.code.bind(renderer);
+
+        renderer.code = function(code, language, isEscaped) {
+          if (language === 'widget') {
+            try {
+              const data = JSON.parse(code);
+              if (data.type === 'choice') {
+                const optionsHtml = (data.options || []).map(opt => {
+                  const label = opt.label.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                  const val = opt.value.replace(/"/g, '&quot;');
+                  return `<button class="widget-btn" data-widget-id="${data.id}" data-value="${val}">${label}</button>`;
+                }).join('');
+                
+                const title = (data.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                
+                return `
+                  <div class="dynamic-widget" id="widget-${data.id}">
+                    <div class="widget-title">${title}</div>
+                    <div class="widget-options">
+                      ${optionsHtml}
+                    </div>
+                  </div>
+                `;
+              }
+            } catch (e) {
+              console.error("Failed to parse widget JSON:", e);
+              // Fallback to normal rendering if JSON is invalid
+            }
+          }
+          return originalCodeRenderer(code, language, isEscaped);
+        };
+
+        marked.setOptions({ breaks: true, gfm: true, renderer: renderer });
         let html = marked.parse(processedText);
 
         // 3. Restore and render math with KaTeX
