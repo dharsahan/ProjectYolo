@@ -24,16 +24,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(PROJECT_ROOT / ".env")
 
-from aiohttp import web
+from aiohttp import web  # noqa: E402
 
-import agent as yolo_agent
-from session import SessionManager
-from openai import AsyncOpenAI
-import mimetypes
+import agent as yolo_agent  # noqa: E402
+from session import SessionManager  # noqa: E402
+from openai import AsyncOpenAI  # noqa: E402
+import mimetypes  # noqa: E402
 
 # ── Shared state (same as bot.py) ──
 TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "60"))
@@ -376,27 +376,19 @@ async def handle_confirm(request: web.Request) -> web.Response:
         if not session.pending_confirmations:
             return web.json_response({"error": "No pending confirmations"}, status=400)
             
-        p = session.pending_confirmations.pop(0)
-        
         try:
             if confirmed:
-                result = await yolo_agent.execute_tool_direct(
-                    p["action"], p["tool_args"], user_id, signal_handler=None, session=session
+                # We currently only support single-confirm via the desktop UI
+                response = await yolo_agent.resolve_confirmations(
+                    session, user_id, signal_handler=None, confirm_all=False
                 )
             else:
-                result = "Action denied by user."
+                await yolo_agent.deny_confirmations(session, deny_all=False)
+                # Re-run the turn to get the final response
+                response = await yolo_agent.run_agent_turn(
+                    None, session, signal_handler=None, memory_service=session_manager.memory
+                )
                 
-            # Patch the HITL placeholder in history with real result
-            for msg in reversed(session.message_history):
-                if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
-                    msg["content"] = result
-                    break
-            session.history_dirty = True
-            
-            # Re-run the turn to get the final response
-            response = await yolo_agent.run_agent_turn(
-                None, session, signal_handler=None, memory_service=session_manager.memory
-            )
             session_manager.save(user_id)
             return web.json_response({"response": response})
         except Exception as exc:
@@ -744,7 +736,7 @@ async def run_desktop_bridge(
     await site.start()
 
     print(f"[desktop-bridge] Listening on http://{host}:{port}")
-    print(f"[desktop-bridge] Session shared with Telegram/CLI/Discord")
+    print("[desktop-bridge] Session shared with Telegram/CLI/Discord")
     sys.stdout.flush()
 
     # Run forever (until cancelled)
@@ -764,7 +756,7 @@ def main():
 
     print(f"[desktop-bridge] Starting on http://127.0.0.1:{port}")
     print(f"[desktop-bridge] Model: {yolo_agent.router.config.model} via {yolo_agent.router.config.provider}")
-    print(f"[desktop-bridge] Session DB: ~/.yolo/yolo_v2.db (shared with Telegram/CLI)")
+    print("[desktop-bridge] Session DB: ~/.yolo/yolo_v2.db (shared with Telegram/CLI)")
     print("[desktop-bridge] Bridge ready")
     sys.stdout.flush()
 

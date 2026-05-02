@@ -1,4 +1,16 @@
+import json
+import os
+import re
+import subprocess
+import time
+from datetime import datetime
+from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 from tools.registry import register_tool
+from tools.base import YOLO_ARTIFACTS, audit_log
+
 """
 GUI Perception & Interaction Engine — UI-TARS-inspired.
 
@@ -12,18 +24,6 @@ Dependencies:
   pip:  pyautogui, pytesseract, opencv-python-headless, pillow
   sys:  tesseract-ocr  (apt install tesseract-ocr  /  pacman -S tesseract)
 """
-
-import json
-import os
-import re
-import subprocess
-import time
-from datetime import datetime
-from difflib import SequenceMatcher
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-from tools.base import YOLO_ARTIFACTS, audit_log
 
 # --------------- optional imports with graceful degradation ---------------
 try:

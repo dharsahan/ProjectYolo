@@ -1,6 +1,8 @@
 from tools.registry import register_tool
 import json
-from tools.database_ops import update_worker_status
+import asyncio
+import uuid
+from tools.database_ops import update_worker_status, add_worker_task, _conn_ctx
 from tools.base import audit_log
 
 @register_tool()
@@ -17,10 +19,6 @@ def request_help(task_id: str, reason: str, context: str) -> str:
     update_worker_status(task_id, "needs_help", details)
     audit_log("request_help", {"task_id": task_id}, "success")
     return f"__WORKER_TERMINATE__: Task {task_id} marked as needs_help."
-
-import asyncio
-import uuid
-from tools.database_ops import add_worker_task, _conn_ctx
 
 @register_tool()
 def spawn_worker(user_id: int, role: str, objective: str) -> str:

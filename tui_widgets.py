@@ -1,7 +1,7 @@
+import os
 from textual.app import ComposeResult
 from textual.containers import Vertical, ScrollableContainer
 from textual.widgets import Static, Markdown, Input, LoadingIndicator
-from textual.message import Message
 from tools.base import format_log_line
 
 class ChatMessage(Static):
@@ -56,7 +56,8 @@ class ChatWidget(Vertical):
         if self.last_assistant_msg is not None:
             # Markdown update might be awaitable in newer Textual versions
             update_task = self.last_assistant_msg.query_one(Markdown).update(content)
-            import inspect, asyncio
+            import inspect
+            import asyncio
             if inspect.isawaitable(update_task):
                 await update_task
             self.last_assistant_msg.scroll_visible()
@@ -133,4 +134,3 @@ class LogWidget(Vertical):
         except Exception as e:
             content_panel.update(f"Error reading logs: {e}")
 
-import os

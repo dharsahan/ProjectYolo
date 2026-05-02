@@ -1,6 +1,4 @@
 import sqlite3
-import os
-from pathlib import Path
 from tools.base import YOLO_HOME
 
 class TieredMemoryEngine:
@@ -222,12 +220,12 @@ class TieredMemoryEngine:
                 like_queries = [f"%{t}%" for t in terms]
                 
                 try:
-                    cursor.execute(f"""
+                    cursor.execute("""
                         SELECT rowid, fact, importance, created_at FROM L3_semantic_memory 
                         WHERE user_id = ? AND L3_semantic_memory MATCH ?
                     """, (uid, fts_query))
                     raw_results.extend([{"id": f"l3_{row['rowid']}", "memory": row['fact'], "importance": row['importance'] or 5.0, "created_at": row['created_at']} for row in cursor.fetchall()])
-                except sqlite3.OperationalError as e:
+                except sqlite3.OperationalError:
                     # Log the FTS5 error silently
                     pass
                     

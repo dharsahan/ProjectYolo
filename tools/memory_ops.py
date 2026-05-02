@@ -1,7 +1,7 @@
 from tools.registry import register_tool
 from tools.base import audit_log
 from tools.memory_service import get_memory
-
+from tools.yolo_memory import TieredMemoryEngine
 
 @register_tool()
 def memory_list(user_id: int) -> str:
@@ -75,9 +75,6 @@ def memory_wipe(user_id: int) -> str:
         return f"Error wiping memories: {e}"
 
 # --- TieredMemoryEngine Working Memory Tools ---
-
-from tools.yolo_memory import TieredMemoryEngine
-from tools.memory_service import get_memory
 
 _fallback_tiered_engine = None
 

@@ -1,9 +1,3 @@
-from tools.registry import register_tool
-"""
-Local Codebase RAG operations.
-Indexes the workspace into a local Qdrant vector database and allows semantic search.
-"""
-
 import os
 from pathlib import Path
 from typing import List
@@ -12,7 +6,13 @@ from openai import OpenAI
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
+from tools.registry import register_tool
 from tools.base import YOLO_HOME, audit_log
+
+"""
+Local Codebase RAG operations.
+Indexes the workspace into a local Qdrant vector database and allows semantic search.
+"""
 
 # Path to local RAG qdrant instance (separate from Mem0 episodic memory)
 RAG_DB_PATH = YOLO_HOME / "memory" / "codebase_rag"

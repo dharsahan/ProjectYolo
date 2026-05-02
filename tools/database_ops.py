@@ -387,3 +387,13 @@ def update_worker_status(task_id: str, status: str, result: str):
             (status, result, task_id),
         )
 
+
+def close_db():
+    """Close the shared database connection."""
+    global _shared_conn
+    with _conn_lock:
+        if _shared_conn:
+            _shared_conn.close()
+            _shared_conn = None
+
+

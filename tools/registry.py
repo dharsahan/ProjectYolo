@@ -1,4 +1,3 @@
-import inspect
 from typing import Callable, Dict
 
 TOOL_REGISTRY: Dict[str, Callable] = {}

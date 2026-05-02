@@ -12,8 +12,8 @@ async def execute_tool_direct(
     session: Any = None,
 ) -> str:
     import agent
-    from tools.base import audit_log
-    from agent import log_agent, get_background_initial_messages, run_agent_turn, _compact_history
+    from agent import log_agent, run_agent_turn
+    from prompt_builder import get_background_initial_messages, _compact_history
     if isinstance(func_args, str):
         try:
             func_args = json.loads(func_args)

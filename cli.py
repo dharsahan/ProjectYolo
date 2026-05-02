@@ -5,15 +5,13 @@ import os
 from typing import Optional
 
 try:
-    import readline
+    import readline  # noqa: F401
 except ImportError:
     pass
 
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.live import Live
-from rich.text import Text
 
 import agent
 from session import SessionManager

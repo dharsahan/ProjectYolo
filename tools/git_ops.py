@@ -1,4 +1,10 @@
+import json
+import os
+import subprocess
+
 from tools.registry import register_tool
+from tools.base import audit_log
+
 """
 Git Integration Tools — structured wrappers around git operations.
 
@@ -6,12 +12,6 @@ These replace verbose `run_bash("git ...")` calls with tools that return
 parsed, token-efficient output.  All commands execute in the current
 working directory.
 """
-
-import json
-import os
-import subprocess
-
-from tools.base import audit_log
 
 
 def _get_int_env(name: str, default: int, min_value: int = 1) -> int:

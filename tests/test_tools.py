@@ -1,5 +1,3 @@
-import pytest
-import os
 from unittest.mock import MagicMock
 from tools.base import get_mem0_config, audit_log
 
@@ -18,7 +16,6 @@ def test_audit_log_stderr_fallback(capsys, monkeypatch):
     # Make the log file unwritable
     monkeypatch.setattr("builtins.open", MagicMock(side_effect=PermissionError("Permission denied")))
     
-    from tools.base import audit_log
     audit_log("test_tool", {}, "success", "detail")
     
     captured = capsys.readouterr()

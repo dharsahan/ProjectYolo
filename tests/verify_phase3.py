@@ -1,5 +1,3 @@
-import os
-import json
 from pathlib import Path
 
 def test_phase3_renderer_reads_files():

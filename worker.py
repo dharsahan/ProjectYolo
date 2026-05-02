@@ -1,14 +1,17 @@
 import asyncio
 import os
-import json
 from typing import Any
 from session import Session
 
 async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str, memory_service: Any) -> None:
     """An isolated loop for a specialized worker agent."""
-    import uuid
-    from tools.base import audit_log
-    from tools.database_ops import add_worker_task
+    from tools.database_ops import add_worker_task, update_worker_status
+    import agent
+    import tools
+    from tool_dispatcher import execute_tool_direct
+    
+    # Use the global router from agent module
+    router = agent.router
     
     # Ensure a record exists in the DB immediately
     try:
@@ -94,7 +97,7 @@ async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str,
                     from tools.database_ops import update_worker_status
                     err_msg = str(e)
                     if "401" in err_msg or "unauthorized" in err_msg.lower():
-                        update_worker_status(task_id, "failed", f"Unauthorized: LLM token expired or invalid.")
+                        update_worker_status(task_id, "failed", "Unauthorized: LLM token expired or invalid.")
                     else:
                         update_worker_status(task_id, "failed", f"Worker crashed: {e}")
                     return True # Error handled

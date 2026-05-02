@@ -145,8 +145,16 @@ class SessionManager:
                 if (now - sess.last_active).total_seconds() > self.timeout_minutes * 60
             ]
             for uid in expired_ids:
-                # Save to DB before dropping from memory (force to bypass dedup cache)
-                self.save(uid, force=True)
-                del self.sessions[uid]
-                if uid in self.locks:
-                    del self.locks[uid]
+                lock = self.get_lock(uid)
+                if lock.locked():
+                    continue # Busy, skip this round
+                    
+                async with lock:
+                    # Save to DB before dropping from memory (force to bypass dedup cache)
+                    self.save(uid, force=True)
+                    if uid in self.sessions:
+                        del self.sessions[uid]
+                    # We keep the lock in self.locks for future requests, 
+                    # it will be reused by get_lock. Cleaning it up might
+                    # cause a new lock to be created while we still hold this one.
+

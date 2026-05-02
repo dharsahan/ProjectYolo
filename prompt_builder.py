@@ -2,7 +2,7 @@ import os
 import re
 import json
 from datetime import datetime, timezone
-from colorama import Fore
+from colorama import Fore, Style
 from typing import Optional, List, Dict, Any
 from session import Session
 from llm_router import load_llm_config, LLMRouter
@@ -53,7 +53,6 @@ def _resolve_prompt_profile(profile: Optional[str] = None) -> str:
 
 def _load_prompt_template(name: str) -> Optional[str]:
     # Check user override directory first
-    from tools.base import YOLO_HOME
     user_prompts_dir = YOLO_HOME / "prompts"
     user_path = user_prompts_dir / f"{name}.md"
     

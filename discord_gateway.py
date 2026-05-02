@@ -24,6 +24,50 @@ def _is_allowed_user(user_id: int) -> bool:
     return user_id in allowed
 
 
+class ConfirmationView(discord.ui.View):
+    def __init__(self, session, user_id, session_manager):
+        super().__init__(timeout=None)
+        self.session = session
+        self.user_id = user_id
+        self.session_manager = session_manager
+
+    @discord.ui.button(label="Confirm All", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("Not your session!", ephemeral=True)
+            return
+        
+        await interaction.response.defer()
+        lock = self.session_manager.get_lock(self.user_id)
+        async with lock:
+            try:
+                response = await agent.resolve_confirmations(
+                    self.session, self.user_id, signal_handler=None, confirm_all=True
+                )
+                self.session_manager.save(self.user_id)
+                await interaction.followup.send(response)
+                self.stop()
+            except Exception as e:
+                await interaction.followup.send(f"Error: {e}")
+
+    @discord.ui.button(label="Deny All", style=discord.ButtonStyle.danger)
+    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("Not your session!", ephemeral=True)
+            return
+        
+        await interaction.response.defer()
+        lock = self.session_manager.get_lock(self.user_id)
+        async with lock:
+            await agent.deny_confirmations(self.session, deny_all=True)
+            response = await agent.run_agent_turn(
+                None, self.session, signal_handler=None, memory_service=self.session_manager.memory
+            )
+            self.session_manager.save(self.user_id)
+            await interaction.followup.send(response)
+            self.stop()
+
+
 class DiscordYoloClient(discord.Client):
     def __init__(self, session_manager: SessionManager):
         intents = discord.Intents.default()
@@ -49,8 +93,10 @@ class DiscordYoloClient(discord.Client):
         async with lock:
             session = self.session_manager.get_or_create(user_id)
             if session.pending_confirmations:
+                view = ConfirmationView(session, user_id, self.session_manager)
                 await message.reply(
-                    "Pending confirmation exists. Resolve it in Telegram first."
+                    f"You have {len(session.pending_confirmations)} pending actions. Resolve them first:",
+                    view=view
                 )
                 return
 
@@ -62,17 +108,11 @@ class DiscordYoloClient(discord.Client):
                     memory_service=self.session_manager.memory,
                 )
             except agent.PendingConfirmationError as e:
-                session.pending_confirmations.append(
-                    {
-                        "action": e.action,
-                        "args": e.tool_args,
-                        "tool_call_id": e.tool_call_id,
-                    }
-                )
                 self.session_manager.save(user_id)
+                view = ConfirmationView(session, user_id, self.session_manager)
                 await message.reply(
-                    f"Confirmation required: `{e.action}` -> `{e.path}`. "
-                    "Use Telegram callback controls or /cancel there."
+                    f"⚠️ **Confirmation Required**\nAction: `{e.action}`\nPath: `{e.path}`",
+                    view=view
                 )
                 return
             except Exception as ex:
@@ -86,6 +126,7 @@ class DiscordYoloClient(discord.Client):
             ] or ["(No response)"]
             for chunk in chunks:
                 await message.reply(chunk)
+
 
 
 async def run_discord_gateway() -> None:

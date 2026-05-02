@@ -2,10 +2,13 @@ from tools.registry import register_tool
 import asyncio
 import uuid
 import logging
-from typing import Callable
+from typing import Callable, Set
 from tools.database_ops import add_background_task, update_background_task
 
 logger = logging.getLogger(__name__)
+
+# Keep a reference to tasks to avoid garbage collection
+_background_tasks: Set[asyncio.Task] = set()
 
 
 @register_tool()
@@ -90,7 +93,9 @@ async def dispatch_parallel_agents(
         return "\n".join(output)
 
     for coro in workers:
-        asyncio.create_task(coro)
+        task = asyncio.create_task(coro)
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     lines = [
         f"Launched {len(task_specs)} parallel background agents.",
@@ -100,3 +105,19 @@ async def dispatch_parallel_agents(
     for task_id, objective, index in task_specs:
         lines.append(f"{index}. `{task_id}` -> {objective}")
     return "\n".join(lines)
+
+
+async def cancel_all_background_tasks():
+    """Cancel all pending background missions on system shutdown."""
+    if not _background_tasks:
+        return
+    
+    logger.info(f"Cancelling {len(_background_tasks)} background tasks...")
+    for task in _background_tasks:
+        task.cancel()
+    
+    # Wait for all tasks to acknowledge cancellation
+    await asyncio.gather(*_background_tasks, return_exceptions=True)
+    _background_tasks.clear()
+    logger.info("All background tasks cancelled.")
+

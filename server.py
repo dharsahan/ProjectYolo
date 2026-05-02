@@ -27,7 +27,14 @@ async def _serve(mode: str) -> None:
     if not tasks:
         raise RuntimeError("No gateway selected.")
 
-    await asyncio.gather(*tasks)
+    try:
+        await asyncio.gather(*tasks)
+    finally:
+        # Graceful shutdown: cancel background missions and close DB
+        from tools.background_ops import cancel_all_background_tasks
+        from tools.database_ops import close_db
+        await cancel_all_background_tasks()
+        close_db()
 
 
 def main() -> None:

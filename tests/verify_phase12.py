@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 def test_phase12_voice_recording():

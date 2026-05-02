@@ -8,7 +8,6 @@ from session import Session
 import asyncio
 import json
 import monitoring
-import os
 from tools import database_ops
 
 class ConfirmationModal(ModalScreen):
@@ -191,103 +190,26 @@ class AgenticIDE(App):
                     result = await self.push_screen(modal)  # type: ignore
                     
                     if result == "approve":
-                        # Handle single first one (legacy compat)
-                        p = pending_list[0]
-                        self.session.pending_confirmations = pending_list[1:]
-                        tool_result = await agent.execute_tool_direct(
-                            p["action"], 
-                            p["args"], 
-                            self.session.user_id, 
-                            signal_handler=signal_handler, 
-                            session=self.session
+                        await agent.resolve_confirmations(
+                            self.session, self.session.user_id, signal_handler=signal_handler, confirm_all=False
                         )
-                        found = False
-                        for msg in reversed(self.session.message_history):
-                            if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
-                                msg["content"] = tool_result
-                                found = True
-                                break
-                        if not found:
-                            self.session.message_history.append({
-                                "role": "tool",
-                                "tool_call_id": p["tool_call_id"],
-                                "name": p["action"],
-                                "content": tool_result
-                            })
-                        self.session.history_dirty = True
                         is_resume = True
                         continue
 
                     elif result == "approve_all":
-                        self.session.pending_confirmations = []
-                        execution_tasks = []
-                        for p in pending_list:
-                            execution_tasks.append(
-                                agent.execute_tool_direct(
-                                    p["action"],
-                                    p["args"],
-                                    self.session.user_id,
-                                    signal_handler=signal_handler,
-                                    session=self.session,
-                                )
-                            )
-                        results = await asyncio.gather(*execution_tasks)
-                        for p, tool_result in zip(pending_list, results):
-                            found = False
-                            for msg in reversed(self.session.message_history):
-                                if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
-                                    msg["content"] = tool_result
-                                    found = True
-                                    break
-                            if not found:
-                                self.session.message_history.append({
-                                    "role": "tool",
-                                    "tool_call_id": p["tool_call_id"],
-                                    "name": p["action"],
-                                    "content": tool_result
-                                })
-                        self.session.history_dirty = True
+                        await agent.resolve_confirmations(
+                            self.session, self.session.user_id, signal_handler=signal_handler, confirm_all=True
+                        )
                         is_resume = True
                         continue
 
                     elif result == "deny_all":
-                        self.session.pending_confirmations = []
-                        for p in pending_list:
-                            found = False
-                            for msg in reversed(self.session.message_history):
-                                if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
-                                    msg["content"] = "Action denied by user."
-                                    found = True
-                                    break
-                            if not found:
-                                self.session.message_history.append({
-                                    "role": "tool",
-                                    "tool_call_id": p["tool_call_id"],
-                                    "name": p["action"],
-                                    "content": "Action denied by user."
-                                })
-                        self.session.history_dirty = True
+                        await agent.deny_confirmations(self.session, deny_all=True)
                         is_resume = True
                         continue
 
                     elif result == "deny":
-                        # Handle single deny
-                        p = pending_list[0]
-                        self.session.pending_confirmations = pending_list[1:]
-                        found = False
-                        for msg in reversed(self.session.message_history):
-                            if msg.get("role") == "tool" and msg.get("tool_call_id") == p["tool_call_id"]:
-                                msg["content"] = "Action denied by user."
-                                found = True
-                                break
-                        if not found:
-                            self.session.message_history.append({
-                                "role": "tool",
-                                "tool_call_id": p["tool_call_id"],
-                                "name": p["action"],
-                                "content": "Action denied by user."
-                            })
-                        self.session.history_dirty = True
+                        await agent.deny_confirmations(self.session, deny_all=False)
                         is_resume = True
                         continue
 

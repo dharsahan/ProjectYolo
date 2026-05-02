@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 def test_phase2_hitl_no_auto_approve():

@@ -4,7 +4,6 @@ import logging
 import mimetypes
 import os
 import sys
-import time
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -440,7 +439,6 @@ async def handle_document_upload(update: Update, context: ContextTypes.DEFAULT_T
     assert update.effective_user is not None
 
     assert update.effective_user
-    user_id = update.effective_user.id
     document = update.message.document
     file_size = int(document.file_size or 0)
 
@@ -1063,51 +1061,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending_list = list(session.pending_confirmations)
         
         if query.data == "confirm_all":
-            session.pending_confirmations = []
             await _safe_edit_callback_message("✅ *All Actions Confirmed*")
             try:
-                # Execute all pending in parallel
-                execution_tasks = []
-                for p in pending_list:
-                    execution_tasks.append(
-                        agent.execute_tool_direct(
-                            p["action"],
-                            p["args"],
-                            user_id,
-                            signal_handler=telegram_signal_handler,
-                            session=session,
-                        )
-                    )
-
-                results = await asyncio.gather(*execution_tasks)
-
-                # Update history for each
-                for p, result in zip(pending_list, results):
-                    found = False
-                    for msg in reversed(session.message_history):
-                        if (
-                            msg.get("role") == "tool"
-                            and msg.get("tool_call_id") == p["tool_call_id"]
-                        ):
-                            msg["content"] = result
-                            found = True
-                            break
-                    if not found:
-                        session.message_history.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": p["tool_call_id"],
-                                "name": p["action"],
-                                "content": result,
-                            }
-                        )
-                session.history_dirty = True
-
-                response = await agent.run_agent_turn(
-                    None,
-                    session,
-                    signal_handler=telegram_signal_handler,
-                    memory_service=session_manager.memory,
+                response = await agent.resolve_confirmations(
+                    session, user_id, signal_handler=telegram_signal_handler, confirm_all=True
                 )
                 await send_long_message((update.effective_chat.id if update.effective_chat else 0), response, context)
                 session_manager.save(user_id)
@@ -1124,50 +1081,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 session_manager.save(user_id)
         
         elif query.data == "confirm":
-            # Handle single confirmation (first in list)
             if not pending_list:
                 await _safe_edit_callback_message("ℹ️ *No Pending Actions*")
                 return
             
             p = pending_list[0]
-            session.pending_confirmations = pending_list[1:]
-            
             await _safe_edit_callback_message(f"✅ *Action Confirmed*: `{escape_markdown(p['action'])}`")
             try:
-                result = await agent.execute_tool_direct(
-                    p["action"],
-                    p["args"],
-                    user_id,
-                    signal_handler=telegram_signal_handler,
-                    session=session,
-                )
-
-                # Update history
-                found = False
-                for msg in reversed(session.message_history):
-                    if (
-                        msg.get("role") == "tool"
-                        and msg.get("tool_call_id") == p["tool_call_id"]
-                    ):
-                        msg["content"] = result
-                        found = True
-                        break
-                if not found:
-                    session.message_history.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": p["tool_call_id"],
-                            "name": p["action"],
-                            "content": result,
-                        }
-                    )
-                session.history_dirty = True
-
-                response = await agent.run_agent_turn(
-                    None,
-                    session,
-                    signal_handler=telegram_signal_handler,
-                    memory_service=session_manager.memory,
+                response = await agent.resolve_confirmations(
+                    session, user_id, signal_handler=telegram_signal_handler, confirm_all=False
                 )
                 await send_long_message((update.effective_chat.id if update.effective_chat else 0), response, context)
                 session_manager.save(user_id)
@@ -1184,29 +1106,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 session_manager.save(user_id)
 
         elif query.data == "deny_all":
-            session.pending_confirmations = []
+            await agent.deny_confirmations(session, deny_all=True)
             await _safe_edit_callback_message("❌ *All Actions Cancelled*")
-            for p in pending_list:
-                found = False
-                for msg in reversed(session.message_history):
-                    if (
-                        msg.get("role") == "tool"
-                        and msg.get("tool_call_id") == p["tool_call_id"]
-                    ):
-                        msg["content"] = "Action denied by user."
-                        found = True
-                        break
-                if not found:
-                    session.message_history.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": p["tool_call_id"],
-                            "name": p["action"],
-                            "content": "Action denied by user.",
-                        }
-                    )
-            session.history_dirty = True
-
+            
             try:
                 response = await agent.run_agent_turn(
                     None,
@@ -1229,24 +1131,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 session_manager.save(user_id)
         
         elif query.data == "deny":
-            # Handle single denial
             if not pending_list:
                 await _safe_edit_callback_message("ℹ️ *No Pending Actions*")
                 return
                 
             p = pending_list[0]
-            session.pending_confirmations = pending_list[1:]
-            
+            await agent.deny_confirmations(session, deny_all=False)
             await _safe_edit_callback_message(f"❌ *Action Denied*: `{escape_markdown(p['action'])}`")
-            for msg in reversed(session.message_history):
-                if (
-                    msg.get("role") == "tool"
-                    and msg.get("tool_call_id") == p["tool_call_id"]
-                ):
-                    msg["content"] = "Action denied by user."
-                    break
-            session.history_dirty = True
-
+            
             try:
                 response = await agent.run_agent_turn(
                     None,
@@ -1394,7 +1286,7 @@ async def post_init(application: Application) -> None:
                                 delivered = True
                             except Exception:
                                 pass # Fallback to plain below
-                        except telegram.error.BadRequest as e:
+                        except telegram.error.BadRequest:
                             # Markdown parse errors or length issues are recoverable via plain text fallback.
                             plain_msg = f"🔔 Mission Update{suffix}\nID: {tid}\nObjective: {obj}\nStatus: {stat.upper()}\n\nResult: {r_part}"
                             if len(plain_msg) > 4080:
@@ -1608,7 +1500,14 @@ def main():
             secret_token=TELEGRAM_WEBHOOK_SECRET_TOKEN or None,
         )
     else:
-        application.run_polling()
+        try:
+            application.run_polling()
+        finally:
+            # Graceful shutdown: cancel background missions and close DB
+            from tools.background_ops import cancel_all_background_tasks
+            from tools.database_ops import close_db
+            asyncio.run(cancel_all_background_tasks())
+            close_db()
 
 
 if __name__ == "__main__":

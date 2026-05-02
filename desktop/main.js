@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, Notification, globalShortcut } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { spawn } = require('child_process');
 
 let mainWindow;
@@ -300,11 +301,23 @@ ipcMain.handle('transcribe', async (_event, { audio }) => {
   }
 });
 
+ipcMain.handle('get-bridge-port', () => {
+  return BRIDGE_PORT;
+});
+
 // ── App lifecycle ──
 
 app.whenReady().then(() => {
   // Start Python Bridge automatically
-  pyBridge = spawn('python3', [path.join(__dirname, 'api_bridge.py')], { 
+  const projectRoot = path.join(__dirname, '..');
+  const venvPython = process.platform === 'win32' 
+    ? path.join(projectRoot, '.venv', 'Scripts', 'python.exe')
+    : path.join(projectRoot, '.venv', 'bin', 'python3');
+  
+  const pythonCmd = fs.existsSync(venvPython) ? venvPython : 'python3';
+  console.log(`[main] Starting Python Bridge using: ${pythonCmd}`);
+
+  pyBridge = spawn(pythonCmd, [path.join(__dirname, 'api_bridge.py')], { 
     stdio: 'inherit',
     env: { ...process.env, PYTHONUNBUFFERED: '1' }
   });
