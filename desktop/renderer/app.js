@@ -1410,24 +1410,12 @@
           if (lang === 'widget') {
             try {
               const data = JSON.parse(codeText);
-              if (data.type === 'choice') {
-                const optionsHtml = (data.options || []).map(opt => {
-                  const label = opt.label.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                  const val = opt.value.replace(/"/g, '&quot;');
-                  return `<button class="widget-btn" data-widget-id="${data.id}" data-value="${val}">${label}</button>`;
-                }).join('');
-                
-                const title = (data.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                
-                return `
-                  <div class="dynamic-widget" id="widget-${data.id}">
-                    <div class="widget-title">${title}</div>
-                    <div class="widget-options">
-                      ${optionsHtml}
-                    </div>
-                  </div>
-                `;
+              // Call the new global render function
+              if (typeof renderActiveWidget === 'function') {
+                renderActiveWidget(data);
               }
+              // Return a placeholder for the chat history
+              return `<div class="widget-placeholder"><em>[Interactive Widget Expanded]</em></div>`;
             } catch (e) {
               console.error("Failed to parse widget JSON:", e);
               // Fallback to normal rendering if JSON is invalid
