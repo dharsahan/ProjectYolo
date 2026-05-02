@@ -1935,8 +1935,8 @@ body::before {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
-  padding: 10px 16px;
-  border-radius: 6px;
+  padding: 12px 16px;
+  border-radius: 8px;
   cursor: pointer;
   text-align: left;
   transition: all 0.2s ease;
@@ -1966,11 +1966,11 @@ body::before {
 .textbar-widget {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 15px;
-  margin: 0; /* Remove top/bottom margin since it's anchored */
+  border-radius: 16px;
+  padding: 20px;
+  margin: 0;
   font-family: var(--font-body);
-  box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.6);
 }
 
 .widget-cancel {
@@ -1991,5 +1991,51 @@ body::before {
   color: var(--text-muted);
   font-size: 0.9em;
   padding: 8px 0;
+}
+
+.widget-custom-input-container {
+  display: flex;
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  transition: border-color 0.2s ease;
+}
+
+.widget-custom-input-container:focus-within {
+  border-color: var(--accent-color);
+}
+
+.widget-custom-input {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  width: 100%;
+  outline: none;
+  font-size: 13px;
+  font-family: var(--font-body);
+}
+
+.widget-custom-send-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.widget-custom-send-btn:hover {
+  color: var(--accent-color);
+}
+
+.widget-custom-send-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
