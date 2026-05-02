@@ -1351,10 +1351,22 @@
         const renderer = new marked.Renderer();
         const originalCodeRenderer = renderer.code.bind(renderer);
 
-        renderer.code = function(code, language, isEscaped) {
-          if (language === 'widget') {
+        renderer.code = function(tokenOrCode, language, isEscaped) {
+          let codeText = '';
+          let lang = '';
+          
+          // Handle marked v18+ token signature vs legacy signature
+          if (typeof tokenOrCode === 'object' && tokenOrCode !== null) {
+            codeText = tokenOrCode.text;
+            lang = tokenOrCode.lang;
+          } else {
+            codeText = tokenOrCode;
+            lang = language;
+          }
+
+          if (lang === 'widget') {
             try {
-              const data = JSON.parse(code);
+              const data = JSON.parse(codeText);
               if (data.type === 'choice') {
                 const optionsHtml = (data.options || []).map(opt => {
                   const label = opt.label.replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1378,7 +1390,7 @@
               // Fallback to normal rendering if JSON is invalid
             }
           }
-          return originalCodeRenderer(code, language, isEscaped);
+          return originalCodeRenderer(tokenOrCode, language, isEscaped);
         };
 
         marked.setOptions({ breaks: true, gfm: true, renderer: renderer });
