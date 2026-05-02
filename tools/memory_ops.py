@@ -144,8 +144,9 @@ def memory_stats(user_id: int = 0) -> str:
         if hasattr(engine, "memory_stats"):
             stats = engine.memory_stats(user_id)
             audit_log("memory_stats", {"user_id": user_id}, "success")
-            return "\n".join(f"{k}: {v}" for k, v in stats.items())
-        return "Stats not supported by current memory engine."
+            import json
+            return json.dumps(stats)
+        return json.dumps({"error": "Stats not supported"})
     except Exception as e:
         audit_log("memory_stats", {"user_id": user_id}, "error", str(e))
         return f"Error getting memory stats: {e}"

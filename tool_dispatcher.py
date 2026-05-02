@@ -10,6 +10,7 @@ async def execute_tool_direct(
     user_id: int,
     signal_handler: Optional[Callable] = None,
     session: Any = None,
+    call_id: Optional[str] = None,
 ) -> str:
     import agent
     from agent import log_agent, run_agent_turn
@@ -26,7 +27,7 @@ async def execute_tool_direct(
     log_agent(user_id, "🔧 TOOL", f"{func_name}({func_args})", Fore.YELLOW)
     if signal_handler:
         await signal_handler(
-            f"{agent.TUIMessage.TOOL_CALL}:{json.dumps({'name': func_name, 'args': func_args})}"
+            f"{agent.TUIMessage.TOOL_CALL}:{json.dumps({'name': func_name, 'args': func_args, 'call_id': call_id})}"
         )
     async def _run_with_history_sync(tid: str, objective: str, parent_session: Any, orig_handler: Any):
         from tools.database_ops import update_background_task_history
@@ -122,7 +123,7 @@ async def execute_tool_direct(
 
         if signal_handler:
             await signal_handler(
-                f"{agent.TUIMessage.TOOL_RESULT}:{json.dumps({'name': func_name, 'result': res})}"
+                f"{agent.TUIMessage.TOOL_RESULT}:{json.dumps({'name': func_name, 'result': res, 'call_id': call_id})}"
             )
 
         if signal_handler and isinstance(res, str) and res.startswith("__SEND_FILE__:"):

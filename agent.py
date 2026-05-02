@@ -241,7 +241,6 @@ async def run_agent_turn(
                         )
                         continue
 
-                    # Define the task to be executed
                     async def run_and_store(
                         name=func_name, arguments=args, call_id=tc_id
                     ):
@@ -251,6 +250,7 @@ async def run_agent_turn(
                             session.user_id,
                             signal_handler,
                             session=session,
+                            call_id=call_id,
                         )
                         return {
                             "role": "tool",
@@ -384,7 +384,9 @@ async def run_agent_turn(
                 err_msg = str(e).lower()
                 retryable_patterns = [
                     "peer closed", "incomplete chunked read", "connection reset", 
-                    "remote protocol error", "connection closed", "readtimeout"
+                    "remote protocol error", "connection closed", "readtimeout",
+                    "timeout", "rate limit", "429", "500", "502", "503", "504",
+                    "llm error"
                 ]
                 is_retryable = any(x in err_msg for x in retryable_patterns)
                 
@@ -538,6 +540,7 @@ async def resolve_confirmations(
                 user_id,
                 signal_handler=signal_handler,
                 session=session,
+                call_id=p["tool_call_id"],
             )
         )
 

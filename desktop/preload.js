@@ -23,5 +23,6 @@ contextBridge.exposeInMainWorld('yoloAPI', {
     ipcRenderer.on('bridge-status', (_event, status) => callback(status));
   },
   transcribe: (payload) => ipcRenderer.invoke('transcribe', payload),
+  updateEnv: (payload) => ipcRenderer.invoke('update-env', payload),
   getBridgePort: () => ipcRenderer.invoke('get-bridge-port'),
 });

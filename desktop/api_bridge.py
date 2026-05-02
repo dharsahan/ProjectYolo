@@ -331,7 +331,13 @@ async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
 
     try:
         while True:
-            event_type, payload = await stream_queue.get()
+            try:
+                event_type, payload = await asyncio.wait_for(stream_queue.get(), timeout=15.0)
+            except asyncio.TimeoutError:
+                # Send SSE comment to prevent proxy/browser idle timeouts during long tool runs
+                await resp.write(b": keepalive\n\n")
+                continue
+
             if event_type == "stream":
                 await resp.write(f"event: stream\ndata: {json.dumps(payload)}\n\n".encode())
             elif event_type == "status":
@@ -419,8 +425,8 @@ async def handle_command(request: web.Request) -> web.Response:
                 history_len = len(session.message_history)
                 compact_threshold = yolo_agent.AUTO_COMPACT_THRESHOLD
                 pending = len(session.pending_confirmations)
-                mode = "⚡ YOLO (Full Access)" if session.yolo_mode else "🛡️ Safe (HITL)"
-                think = "🧠 ON" if getattr(session, "think_mode", False) else "⚙️ OFF"
+                mode = "YOLO (Full Access)" if session.yolo_mode else "Safe (HITL)"
+                think = "ON" if getattr(session, "think_mode", False) else "OFF"
                 policy = getattr(session, "think_mode_policy", "auto")
                 result = (
                     f"**Status Report**\n"
@@ -443,10 +449,10 @@ async def handle_command(request: web.Request) -> web.Response:
                     result = f"Current mode: **{current}**. Use `/mode yolo` or `/mode safe`."
                 elif args[0].lower() == "yolo":
                     session.yolo_mode = True
-                    result = "⚡ **YOLO Mode Enabled!** All actions execute without confirmation."
+                    result = "**YOLO Mode Enabled!** All actions execute without confirmation."
                 elif args[0].lower() == "safe":
                     session.yolo_mode = False
-                    result = "🛡️ **Safe Mode Enabled.** Destructive actions require confirmation."
+                    result = "**Safe Mode Enabled.** Destructive actions require confirmation."
                 else:
                     result = "Unknown mode. Use `/mode yolo` or `/mode safe`."
                 session_manager.save(user_id)
@@ -459,15 +465,15 @@ async def handle_command(request: web.Request) -> web.Response:
                 elif args[0].lower() in {"on", "true", "enable"}:
                     session.think_mode_policy = "force_on"
                     session.think_mode = True
-                    result = "🧠 **Think Mode Enabled.** Policy set to `force_on`."
+                    result = "**Think Mode Enabled.** Policy set to `force_on`."
                 elif args[0].lower() in {"off", "false", "disable"}:
                     session.think_mode_policy = "force_off"
                     session.think_mode = False
-                    result = "⚙️ **Think Mode Disabled.** Policy set to `force_off`."
+                    result = "**Think Mode Disabled.** Policy set to `force_off`."
                 elif args[0].lower() in {"auto", "smart", "default"}:
                     session.think_mode_policy = "auto"
                     session.think_mode = False
-                    result = "🤖 **Think Mode Auto** enabled."
+                    result = "**Think Mode Auto** enabled."
                 else:
                     result = "Unknown option. Use `/think on`, `/think off`, or `/think auto`."
                 session_manager.save(user_id)
@@ -475,7 +481,7 @@ async def handle_command(request: web.Request) -> web.Response:
             elif cmd == "compact":
                 await yolo_agent._compact_history(session, yolo_agent.router)
                 session_manager.save(user_id)
-                result = f"✅ History compacted. Now {len(session.message_history)} messages."
+                result = f"History compacted. Now {len(session.message_history)} messages."
 
             elif cmd == "tools":
                 import tools
@@ -495,8 +501,16 @@ async def handle_command(request: web.Request) -> web.Response:
                 result = get_scheduled_tasks(user_id)
 
             elif cmd == "memories":
-                from tools.memory_ops import memory_list
-                result = memory_list(user_id)
+                if args and args[0] == "--stats":
+                    from tools.memory_ops import memory_stats
+                    result = memory_stats(user_id)
+                else:
+                    from tools.memory_ops import memory_list
+                    result = memory_list(user_id)
+
+            elif cmd == "compact_memories":
+                from tools.memory_ops import consolidate_memories
+                result = consolidate_memories(user_id)
 
             elif cmd == "facts":
                 if session.message_history and session.message_history[0].get("role") == "system":
@@ -679,6 +693,33 @@ async def handle_transcribe(request: web.Request) -> web.Response:
     except Exception as exc:
         return web.json_response({"error": str(exc)}, status=500)
 
+async def handle_update_env(request: web.Request) -> web.Response:
+    """POST /config/env — Update LLM provider settings in .env"""
+    try:
+        from dotenv import set_key
+        data = await request.json()
+        env_path = PROJECT_ROOT / ".env"
+        if not env_path.exists():
+            env_path.touch()
+            
+        allowed_keys = {
+            "LLM_PROVIDER", "MODEL_NAME", "LLM_MODEL", 
+            "OPENAI_API_KEY", "OPENAI_BASE_URL", 
+            "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "ANTHROPIC_BASE_URL",
+            "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_BASE_URL",
+            "LLM_API_KEY", "LLM_BASE_URL"
+        }
+        
+        for k, v in data.items():
+            if k in allowed_keys:
+                set_key(str(env_path), k, str(v))
+                os.environ[k] = str(v)
+        
+        yolo_agent.reload_router()
+        return web.json_response({"status": "success", "message": "Settings saved and LLM router reloaded"})
+    except Exception as exc:
+        return web.json_response({"error": str(exc)}, status=500)
+
 
 # ── App setup ──
 
@@ -689,6 +730,7 @@ def create_app() -> web.Application:
     app.router.add_post("/confirm", handle_confirm)
     app.router.add_post("/command", handle_command)
     app.router.add_post("/transcribe", handle_transcribe)
+    app.router.add_post("/config/env", handle_update_env)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/session", handle_session_info)
     app.router.add_get("/sessions", handle_get_sessions)

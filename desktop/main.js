@@ -301,6 +301,19 @@ ipcMain.handle('transcribe', async (_event, { audio }) => {
   }
 });
 
+ipcMain.handle('update-env', async (_event, payload) => {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/config/env`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return await resp.json();
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('get-bridge-port', () => {
   return BRIDGE_PORT;
 });

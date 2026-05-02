@@ -48,7 +48,17 @@
     closeSettings: $('#close-settings'),
     settingUserId: $('#setting-user-id'),
     settingMode: $('#setting-mode'),
-    settingTheme: $('#setting-theme'),
+    settingFontSize: $('#setting-font-size'),
+    settingsNavItems: document.querySelectorAll('.settings-nav-item'),
+    settingsPanels: document.querySelectorAll('.settings-panel'),
+    settingsCategoryTitle: $('#settings-category-title'),
+    btnConsolidate: $('#btn-consolidate'),
+    btnWipeMemory: $('#btn-wipe-memory'),
+    statL1: $('#stat-l1'),
+    statL2: $('#stat-l2'),
+    statL3: $('#stat-l3'),
+    statL4: $('#stat-l4'),
+    themeBtns: document.querySelectorAll('.theme-btn'),
     workersToggleBtn: $('#workers-toggle-btn'),
     workersPanel: $('#workers-panel'),
     closeWorkers: $('#close-workers'),
@@ -200,7 +210,11 @@
 
   function applyTheme() {
     document.documentElement.setAttribute('data-theme', state.theme);
-    dom.settingTheme.value = state.theme;
+    if (dom.themeBtns) {
+      dom.themeBtns.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.theme === state.theme);
+      });
+    }
   }
 
   // ── Hydrate session from backend (shared with Telegram/CLI) ──
@@ -687,20 +701,49 @@
             statusEl.style.display = 'block';
             scrollToBottom();
           } else if (type === 'tool_call') {
-            const toolMsg = document.createElement('div');
-            toolMsg.className = 'msg-tool-call';
-            toolMsg.innerHTML = `<strong>Tool:</strong> <code>${data.name}</code>`;
-            if (data.args && Object.keys(data.args).length > 0) {
-              toolMsg.innerHTML += `<div class="tool-args">${JSON.stringify(data.args)}</div>`;
-            }
-            streamWrapper.insertBefore(toolMsg, statusEl);
+            const toolGroup = document.createElement('div');
+            toolGroup.className = 'msg-tool-group';
+            toolGroup.id = `tool-${data.call_id || Math.random().toString(36).substr(2, 9)}`;
+            
+            const toolDetails = document.createElement('details');
+            toolDetails.open = true; // Open by default while running
+            toolDetails.className = 'tool-log-details';
+            
+            const summary = document.createElement('summary');
+            summary.innerHTML = `<span class="tool-status-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg></span> Running <code>${data.name}</code>...`;
+            
+            const logContent = document.createElement('div');
+            logContent.className = 'tool-log-content';
+            logContent.innerHTML = `<div class="tool-call-info"><strong>Arguments:</strong> <code>${JSON.stringify(data.args || {})}</code></div><div class="tool-result-placeholder">Waiting for result...</div>`;
+            
+            toolDetails.appendChild(summary);
+            toolDetails.appendChild(logContent);
+            toolGroup.appendChild(toolDetails);
+            streamWrapper.insertBefore(toolGroup, statusEl);
             scrollToBottom();
           } else if (type === 'tool_result') {
-            const resultMsg = document.createElement('div');
-            resultMsg.className = 'msg-tool-result';
-            const resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
-            resultMsg.innerHTML = `<details><summary>Result from <code>${data.name}</code></summary><pre><code>${escapeHtml(resultText)}</code></pre></details>`;
-            streamWrapper.insertBefore(resultMsg, statusEl);
+            // Find the matching tool group using call_id if available
+            let toolGroup = null;
+            if (data.call_id) {
+              toolGroup = document.getElementById(`tool-${data.call_id}`);
+            }
+            // Fallback for missing call_id or old events
+            if (!toolGroup) {
+              toolGroup = Array.from(streamWrapper.querySelectorAll('.msg-tool-group')).find(
+                g => g.querySelector('summary').textContent.includes(data.name) && g.querySelector('.tool-result-placeholder')
+              ) || streamWrapper.querySelector('.msg-tool-group:last-of-type');
+            }
+            if (toolGroup) {
+              const details = toolGroup.querySelector('details');
+              const summary = details.querySelector('summary');
+              const placeholder = details.querySelector('.tool-result-placeholder');
+              
+              summary.innerHTML = `<span class="tool-status-icon success"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Executed <code>${data.name}</code>`;
+              
+              const resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
+              placeholder.className = 'tool-result-content';
+              placeholder.innerHTML = `<strong>Result:</strong><pre><code>${escapeHtml(resultText)}</code></pre>`;
+            }
             scrollToBottom();
           } else if (type === 'needs_confirmation') {
             // Phase 2: Native HITL UI
@@ -731,6 +774,12 @@
             statusEl.style.display = 'none';
             streamMsg.content = streamedContent;
             appendMessageActions(streamWrapper, streamMsg);
+            
+            // Automatically close all tool logs in this message
+            streamWrapper.querySelectorAll('.tool-log-details').forEach(d => {
+              d.open = false;
+            });
+            
             streamDone = true;
           } else if (type === 'error') {
             streamContent.innerHTML = renderMarkdown(`⚠️ Error: ${data}`);
@@ -1003,7 +1052,7 @@
                 type: 'audio/webm',
                 content: base64data
               }];
-              sendMessage('🎤 Voice Message');
+              sendMessage('Voice Message');
             };
             
             // Stop all tracks to release microphone
@@ -1050,11 +1099,80 @@
       toggleRecording(false);
     });
 
-    // Settings
+    // Settings Category Switching
+    dom.settingsNavItems.forEach(item => {
+      item.addEventListener('click', () => {
+        const cat = item.dataset.category;
+        dom.settingsNavItems.forEach(i => i.classList.toggle('active', i === item));
+        dom.settingsPanels.forEach(p => p.classList.toggle('active', p.dataset.category === cat));
+        dom.settingsCategoryTitle.textContent = item.querySelector('span').textContent + ' Settings';
+        
+        if (cat === 'memory') updateMemoryStats();
+      });
+    });
+
+    // Theme Switcher Buttons
+    dom.themeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.theme = btn.dataset.theme;
+        applyTheme();
+        savePrefs();
+      });
+    });
+
+    // Font Size Control
+    if (dom.settingFontSize) {
+      dom.settingFontSize.addEventListener('change', () => {
+        const size = dom.settingFontSize.value;
+        document.documentElement.style.setProperty('--font-size-chat', size + 'px');
+        // Re-render messages to apply font size if needed, or just use CSS variable
+      });
+    }
+
+    // Memory Actions
+    async function updateMemoryStats() {
+      try {
+        const stats = await window.yoloAPI.runCommand({
+          command: 'memories',
+          args: ['--stats'],
+          userId: state.userId
+        });
+        if (stats && stats.response) {
+          // Expecting JSON-like response from the tool
+          const data = JSON.parse(stats.response);
+          dom.statL1.textContent = data.L1_working_memory || 0;
+          dom.statL2.textContent = data.L2_episodic_memory || 0;
+          dom.statL3.textContent = data.L3_semantic_memory || 0;
+          dom.statL4.textContent = data.L4_pattern_memory || 0;
+        }
+      } catch (e) { console.error("Stats fail", e); }
+    }
+
+    if (dom.btnConsolidate) {
+      dom.btnConsolidate.addEventListener('click', async () => {
+        dom.btnConsolidate.disabled = true;
+        dom.btnConsolidate.textContent = 'Consolidating...';
+        await window.yoloAPI.runCommand({ command: 'compact_memories', args: [], userId: state.userId });
+        await updateMemoryStats();
+        dom.btnConsolidate.disabled = false;
+        dom.btnConsolidate.textContent = 'Consolidate Now';
+      });
+    }
+
+    if (dom.btnWipeMemory) {
+      dom.btnWipeMemory.addEventListener('click', async () => {
+        if (confirm("Are you absolutely sure? This will wipe ALL long-term memories for this user.")) {
+          await window.yoloAPI.runCommand({ command: 'forget', args: [], userId: state.userId });
+          await updateMemoryStats();
+        }
+      });
+    }
+
     dom.settingsBtn.addEventListener('click', () => {
       dom.settingUserId.value = state.userId;
       dom.settingMode.value = state.yoloMode ? 'yolo' : 'safe';
       dom.settingsModal.classList.remove('hidden');
+      updateMemoryStats();
     });
     dom.closeSettings.addEventListener('click', () => dom.settingsModal.classList.add('hidden'));
     
@@ -1082,11 +1200,62 @@
     dom.settingMode.addEventListener('change', () => {
       sendMessage(`/mode ${dom.settingMode.value}`);
     });
-    dom.settingTheme.addEventListener('change', () => {
-      state.theme = dom.settingTheme.value;
-      applyTheme();
-      savePrefs();
-    });
+
+    // LLM Provider Settings
+    const btnSaveLlm = document.getElementById('save-llm-settings');
+    if (btnSaveLlm) {
+      btnSaveLlm.addEventListener('click', async () => {
+        btnSaveLlm.textContent = 'Saving...';
+        btnSaveLlm.disabled = true;
+        
+        const provider = document.getElementById('setting-llm-provider').value;
+        const model = document.getElementById('setting-model-name').value.trim();
+        const apiKey = document.getElementById('setting-api-key').value.trim();
+        const baseUrl = document.getElementById('setting-base-url').value.trim();
+        
+        const payload = {
+          "LLM_PROVIDER": provider !== 'auto' ? provider : ''
+        };
+        
+        if (model) {
+          payload["MODEL_NAME"] = model;
+          if (provider === 'openai') payload["OPENAI_MODEL"] = model;
+          if (provider === 'anthropic') payload["ANTHROPIC_MODEL"] = model;
+          if (provider === 'openrouter') payload["OPENROUTER_MODEL"] = model;
+          if (provider === 'compatible') payload["LLM_MODEL"] = model;
+        }
+        
+        if (apiKey) {
+          if (provider === 'openai') payload["OPENAI_API_KEY"] = apiKey;
+          else if (provider === 'anthropic') payload["ANTHROPIC_API_KEY"] = apiKey;
+          else if (provider === 'openrouter') payload["OPENROUTER_API_KEY"] = apiKey;
+          else if (provider === 'compatible') payload["LLM_API_KEY"] = apiKey;
+          else payload["OPENAI_API_KEY"] = apiKey; // fallback
+        }
+        
+        if (baseUrl) {
+          if (provider === 'openai') payload["OPENAI_BASE_URL"] = baseUrl;
+          else if (provider === 'anthropic') payload["ANTHROPIC_BASE_URL"] = baseUrl;
+          else if (provider === 'openrouter') payload["OPENROUTER_BASE_URL"] = baseUrl;
+          else if (provider === 'compatible') payload["LLM_BASE_URL"] = baseUrl;
+        }
+
+        try {
+          const res = await window.yoloAPI.updateEnv(payload);
+          if (res.error) {
+            window.yoloAPI.showNotification('Settings Error', res.error);
+          } else {
+            window.yoloAPI.showNotification('Settings Saved', res.message || 'LLM Provider updated successfully');
+            document.getElementById('setting-api-key').value = ''; // clear key for security
+          }
+        } catch (e) {
+          window.yoloAPI.showNotification('Settings Error', e.message);
+        } finally {
+          btnSaveLlm.textContent = 'Save Provider Settings';
+          btnSaveLlm.disabled = false;
+        }
+      });
+    }
 
     // Bridge status
     if (window.yoloAPI?.onBridgeStatus) {
