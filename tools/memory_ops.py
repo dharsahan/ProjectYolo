@@ -80,7 +80,7 @@ _fallback_tiered_engine = None
 
 def _get_working_memory_engine():
     engine = get_memory()
-    if isinstance(engine, TieredMemoryEngine):
+    if hasattr(engine, "working_memory_set"):
         return engine
     global _fallback_tiered_engine
     if _fallback_tiered_engine is None:

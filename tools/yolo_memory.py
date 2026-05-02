@@ -107,13 +107,13 @@ class TieredMemoryEngine:
             for msg in fact:
                 if isinstance(msg, dict) and "content" in msg and "role" in msg:
                     content = msg["content"]
-                    if msg["role"] == "assistant":
+                    if msg["role"] == "assistant" and content:
                         content = re.sub(r"<thought>.*?</thought>", "", content, flags=re.DOTALL).strip()
                     if content:
                         text_parts.append(f"{msg['role']}: {content}")
             fact_str = "\n".join(text_parts)
         elif isinstance(fact, dict) and "content" in fact:
-            fact_str = fact["content"]
+            fact_str = str(fact["content"] or "")
         else:
             fact_str = str(fact)
             
@@ -249,7 +249,7 @@ class TieredMemoryEngine:
                 return []
                 
             # Apply recency decay: score = importance * exp(-ln(2) * days_old / 30)
-            now = datetime.datetime.now()
+            now = datetime.datetime.utcnow()
             scored_results = []
             for r in raw_results:
                 try:
@@ -286,6 +286,12 @@ class TieredMemoryEngine:
             elif memory_id.startswith("l2_"):
                 eid = int(memory_id[3:])
                 cursor.execute("DELETE FROM L2_episodic_memory WHERE id = ?", (eid,))
+            elif memory_id.startswith("l1_"):
+                key = memory_id[3:]
+                cursor.execute("DELETE FROM L1_working_memory WHERE key = ?", (key,))
+            elif memory_id.startswith("l4_"):
+                eid = int(memory_id[3:])
+                cursor.execute("DELETE FROM L4_pattern_memory WHERE id = ?", (eid,))
             conn.commit()
 
     def delete_all(self, user_id: str):
