@@ -1,23 +1,45 @@
 import asyncio
 import json
 import os
-import re
-import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Optional
 
-from colorama import Fore, Style, init
+from colorama import Fore, init
 from dotenv import load_dotenv
 
 import tools
 from llm_router import LLMRouter, load_llm_config
 from session import Session
-from worker import run_worker_loop
 from tool_dispatcher import execute_tool_direct, sanitize_history
 
-from prompt_builder import *
+from prompt_builder import (
+    get_initial_messages,
+    _normalize_single_system_message,
+    _fetch_all_memories,
+    _sync_basic_facts_into_system_prompt,
+    _is_complex_task_prompt,
+    _inject_system_directive,
+    THINK_MODE_SYSTEM_DIRECTIVE,
+    _build_memory_context,
+    _merge_memory_context_into_system_prompt,
+    _is_self_upgrade_request,
+    SELF_UPGRADE_SYSTEM_DIRECTIVE,
+    _is_experience_update_request,
+    EXPERIENCE_UPDATE_SYSTEM_DIRECTIVE,
+    log_agent,
+    _is_gui_interaction_request,
+    GUI_PERCEPTION_DIRECTIVE,
+    _is_out_of_scope,
+    _is_destructive_or_sensitive_tool,
+    _extract_tool_path,
+    PendingConfirmationError,
+    _compact_history,
+    _collect_turn_tool_names,
+    _collect_run_bash_commands,
+    _missing_self_upgrade_phases,
+    _repo_has_tests,
+)
 
 class TUIMessage:
     STREAM = "__STREAM__"
@@ -278,76 +300,102 @@ async def run_agent_turn(
             session.message_history = sanitize_history(session.message_history)
             session.history_dirty = False
 
-        try:
-            response = await router.chat_completions(
-                messages=session.message_history,
-                tools=tools.TOOLS_SCHEMAS,
-                tool_choice="auto",
-                stream=True,
-            )
-        except Exception as e:
-            return f"Error: LLM issue: {e}"
-
-        last_stream_time = 0.0
+        # ── LLM Call & Streaming ──
+        max_llm_retries = 3
         full_content = ""
         tool_calls_acc: list = []
         usage = None
         has_choices = False
 
-        async for chunk in response:
-            if hasattr(chunk, "usage") and chunk.usage:
-                usage = chunk.usage
+        for llm_attempt in range(max_llm_retries):
+            full_content = ""
+            tool_calls_acc = []
+            usage = None
+            has_choices = False
+            last_stream_time = 0.0
 
-            if not getattr(chunk, "choices", None):
-                continue
+            try:
+                response = await router.chat_completions(
+                    messages=session.message_history,
+                    tools=tools.TOOLS_SCHEMAS,
+                    tool_choice="auto",
+                    stream=True,
+                )
 
-            has_choices = True
-            delta = chunk.choices[0].delta
+                async for chunk in response:
+                    if hasattr(chunk, "usage") and chunk.usage:
+                        usage = chunk.usage
 
-            if getattr(delta, "content", None):
-                full_content += delta.content
-                now = time.time()
-                if now - last_stream_time > 0.1 and signal_handler:
-                    await signal_handler(f"__STREAM__:{full_content}")
-                    last_stream_time = now
+                    if not getattr(chunk, "choices", None):
+                        continue
 
-            if getattr(delta, "tool_calls", None):
-                for tc in delta.tool_calls:
-                    idx = getattr(tc, "index", None)
-                    if idx is None:
-                        idx = 0
-                    while len(tool_calls_acc) <= idx:
-                        tool_calls_acc.append(
-                            {
-                                "id": "",
-                                "type": "function",
-                                "function": {"name": "", "arguments": ""},
-                            }
-                        )
+                    has_choices = True
+                    delta = chunk.choices[0].delta
 
-                    tc_dict = tc.model_dump(exclude_none=True)
+                    if getattr(delta, "content", None):
+                        full_content += delta.content
+                        now = time.time()
+                        if now - last_stream_time > 0.1 and signal_handler:
+                            await signal_handler(f"__STREAM__:{full_content}")
+                            last_stream_time = now
 
-                    def _deep_merge(target, source):
-                        for k, v in source.items():
-                            if k == "index":
-                                continue
-                            if isinstance(v, dict):
-                                if k not in target or not isinstance(target[k], dict):
-                                    target[k] = {}
-                                _deep_merge(target[k], v)
-                            elif (
-                                isinstance(v, str)
-                                and k in target
-                                and isinstance(target[k], str)
-                            ):
-                                if k in ["name", "arguments", "id"]:
-                                    target[k] += v
-                                else:
-                                    target[k] = v
-                            else:
-                                target[k] = v
+                    if getattr(delta, "tool_calls", None):
+                        for tc in delta.tool_calls:
+                            idx = getattr(tc, "index", None)
+                            if idx is None:
+                                idx = 0
+                            while len(tool_calls_acc) <= idx:
+                                tool_calls_acc.append(
+                                    {
+                                        "id": "",
+                                        "type": "function",
+                                        "function": {"name": "", "arguments": ""},
+                                    }
+                                )
 
-                    _deep_merge(tool_calls_acc[idx], tc_dict)
+                            tc_dict = tc.model_dump(exclude_none=True)
+
+                            def _deep_merge(target, source):
+                                for k, v in source.items():
+                                    if k == "index":
+                                        continue
+                                    if isinstance(v, dict):
+                                        if k not in target or not isinstance(target[k], dict):
+                                            target[k] = {}
+                                        _deep_merge(target[k], v)
+                                    elif (
+                                        isinstance(v, str)
+                                        and k in target
+                                        and isinstance(target[k], str)
+                                    ):
+                                        if k in ["name", "arguments", "id"]:
+                                            target[k] += v
+                                        else:
+                                            target[k] = v
+                                    else:
+                                        target[k] = v
+
+                            _deep_merge(tool_calls_acc[idx], tc_dict)
+                
+                # If we reached here, the stream finished successfully
+                break
+
+            except Exception as e:
+                err_msg = str(e).lower()
+                retryable_patterns = [
+                    "peer closed", "incomplete chunked read", "connection reset", 
+                    "remote protocol error", "connection closed", "readtimeout"
+                ]
+                is_retryable = any(x in err_msg for x in retryable_patterns)
+                
+                if is_retryable and llm_attempt < max_llm_retries - 1:
+                    log_agent(session.user_id, "RETRY", f"LLM stream interrupted ({e}). Retrying ({llm_attempt + 1}/{max_llm_retries})...", Fore.YELLOW)
+                    if signal_handler:
+                        await signal_handler(f"__STATUS__: Connection issues, retrying ({llm_attempt + 1})...")
+                    await asyncio.sleep(1.0 + llm_attempt)
+                    continue
+                else:
+                    return f"Error: LLM issue: {e}"
 
         if not has_choices and not usage:
             return "Error: No AI response."
@@ -460,6 +508,99 @@ async def run_agent_turn(
             if signal_handler:
                 await signal_handler("__STATUS__: ")  # Clear status
             return full_content or "Task completed."
+
+
+async def resolve_confirmations(
+    session: Session, 
+    user_id: int, 
+    signal_handler: Optional[Callable] = None,
+    confirm_all: bool = True
+) -> str:
+    """Execute pending tool calls that were approved by the user."""
+    if not session.pending_confirmations:
+        return "No pending actions to confirm."
+
+    pending_list = list(session.pending_confirmations)
+    if confirm_all:
+        session.pending_confirmations = []
+    else:
+        # Resolve only the first one
+        p = pending_list[0]
+        pending_list = [p]
+        session.pending_confirmations = session.pending_confirmations[1:]
+
+    execution_tasks = []
+    for p in pending_list:
+        execution_tasks.append(
+            execute_tool_direct(
+                p["action"],
+                p["args"],
+                user_id,
+                signal_handler=signal_handler,
+                session=session,
+            )
+        )
+
+    results = await asyncio.gather(*execution_tasks)
+
+    # Update history for each
+    for p, result in zip(pending_list, results):
+        found = False
+        for msg in reversed(session.message_history):
+            if (
+                msg.get("role") == "tool"
+                and msg.get("tool_call_id") == p["tool_call_id"]
+            ):
+                msg["content"] = result
+                found = True
+                break
+        if not found:
+            session.message_history.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": p["tool_call_id"],
+                    "name": p["action"],
+                    "content": result,
+                }
+            )
+    session.history_dirty = True
+    
+    # After resolving, run the agent turn again to process results
+    return await run_agent_turn(None, session, signal_handler=signal_handler)
+
+
+async def deny_confirmations(session: Session, deny_all: bool = True) -> None:
+    """Reject pending tool calls as requested by the user."""
+    if not session.pending_confirmations:
+        return
+
+    pending_list = list(session.pending_confirmations)
+    if deny_all:
+        session.pending_confirmations = []
+    else:
+        session.pending_confirmations = session.pending_confirmations[1:]
+        pending_list = [pending_list[0]]
+
+    for p in pending_list:
+        found = False
+        for msg in reversed(session.message_history):
+            if (
+                msg.get("role") == "tool"
+                and msg.get("tool_call_id") == p["tool_call_id"]
+            ):
+                msg["content"] = "Action denied by user."
+                found = True
+                break
+        if not found:
+            session.message_history.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": p["tool_call_id"],
+                    "name": p["action"],
+                    "content": "Action denied by user.",
+                }
+            )
+    session.history_dirty = True
 
 
 def main():

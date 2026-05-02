@@ -111,10 +111,15 @@ class LLMRouter:
                 )
             except Exception as e:
                 err_msg = str(e).lower()
-                is_retryable = any(x in err_msg for x in ["429", "rate limit", "500", "502", "503", "504", "timeout", "too many requests"])
+                retryable_patterns = [
+                    "429", "rate limit", "500", "502", "503", "504", "timeout", 
+                    "too many requests", "peer closed", "incomplete chunked read", 
+                    "connection reset", "remote protocol error", "connection closed"
+                ]
+                is_retryable = any(x in err_msg for x in retryable_patterns)
                 if is_retryable and attempt < max_retries - 1:
                     delay = 2.0 * (2 ** attempt) + random.uniform(0, 1)
-                    print(f"LLM API rate limit or server error ({e}). Retrying in {delay:.2f}s...")
+                    print(f"LLM API network or server error ({e}). Retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})...")
                     await asyncio.sleep(delay)
                 else:
                     raise
