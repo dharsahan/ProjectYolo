@@ -916,28 +916,61 @@
 
   // ── Events ──
   function bindEvents() {
+    // Update the click listener:
     dom.activeWidgetContainer.addEventListener('click', (e) => {
       const btn = e.target.closest('.widget-btn');
-      if (!btn) return;
-
-      const widget = btn.closest('.dynamic-widget');
+      const sendBtn = e.target.closest('.widget-custom-send-btn');
+      
+      const widget = e.target.closest('.dynamic-widget');
       if (!widget || widget.classList.contains('locked')) return;
 
-      // Lock the widget
-      widget.classList.add('locked');
-      btn.setAttribute('data-selected', 'true');
+      if (btn) {
+        // Lock the widget visually
+        widget.classList.add('locked');
+        btn.setAttribute('data-selected', 'true');
 
-      // Extract value
-      const value = btn.getAttribute('data-value');
-      const widgetId = btn.getAttribute('data-widget-id');
+        // Extract value
+        const value = btn.getAttribute('data-value');
+        const widgetId = btn.getAttribute('data-widget-id');
+        
+        // Send the response
+        sendMessage(`[Widget Response: ${widgetId}] Selected: ${value}`);
+        
+        setTimeout(() => clearActiveWidget(), 300);
+      } else if (sendBtn) {
+        const inputEl = widget.querySelector('.widget-custom-input');
+        const value = inputEl ? inputEl.value.trim() : '';
+        if (!value) return;
 
-      // Send the response
-      sendMessage(`[Widget Response: ${widgetId}] Selected: ${value}`);
+        widget.classList.add('locked');
+        const widgetId = inputEl.getAttribute('data-widget-id');
+        
+        sendMessage(`[Widget Response: ${widgetId}] Custom: ${value}`);
+        
+        setTimeout(() => clearActiveWidget(), 300);
+      }
+    });
 
-      // Clear the widget and restore input bar after a brief delay
-      setTimeout(() => {
-        clearActiveWidget();
-      }, 300);
+    // Add keydown listener for Enter key:
+    dom.activeWidgetContainer.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const inputEl = e.target.closest('.widget-custom-input');
+        if (!inputEl) return;
+        
+        e.preventDefault();
+        const value = inputEl.value.trim();
+        if (!value) return;
+
+        const widget = inputEl.closest('.dynamic-widget');
+        if (!widget || widget.classList.contains('locked')) return;
+
+        widget.classList.add('locked');
+        const widgetId = inputEl.getAttribute('data-widget-id');
+        
+        sendMessage(`[Widget Response: ${widgetId}] Custom: ${value}`);
+        
+        setTimeout(() => clearActiveWidget(), 300);
+      }
     });
     dom.sendBtn.addEventListener('click', () => {
       if (!dom.recordingIndicator.classList.contains('hidden')) {
