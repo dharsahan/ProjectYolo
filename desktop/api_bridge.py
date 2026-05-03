@@ -297,6 +297,27 @@ async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
                 await stream_queue.put(("tool_result", data))
             except Exception:
                 pass
+        elif signal_text.startswith("__SEND_FILE__:"):
+            file_path = signal_text[len("__SEND_FILE__:"):].strip()
+            from tools.base import YOLO_ARTIFACTS
+            abs_path = os.path.abspath(file_path)
+            
+            try:
+                rel_to_artifacts = os.path.relpath(abs_path, YOLO_ARTIFACTS)
+                if not rel_to_artifacts.startswith(".."):
+                    # Use a stable URL prefix
+                    url = f"/artifacts/{rel_to_artifacts}"
+                else:
+                    url = f"file://{abs_path}"
+            except Exception:
+                url = f"file://{abs_path}"
+                
+            is_image = any(abs_path.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"])
+            await stream_queue.put(("artifact", {
+                "url": url, 
+                "type": "image" if is_image else "file", 
+                "name": os.path.basename(abs_path)
+            }))
 
     async def _run_turn():
         """Run the agent turn in background and push final result."""
@@ -346,6 +367,8 @@ async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
                 await resp.write(f"event: tool_call\ndata: {json.dumps(payload)}\n\n".encode())
             elif event_type == "tool_result":
                 await resp.write(f"event: tool_result\ndata: {json.dumps(payload)}\n\n".encode())
+            elif event_type == "artifact":
+                await resp.write(f"event: artifact\ndata: {json.dumps(payload)}\n\n".encode())
             elif event_type == "needs_confirmation":
                 await resp.write(f"event: needs_confirmation\ndata: {json.dumps(payload)}\n\n".encode())
                 break
@@ -776,6 +799,9 @@ def create_app() -> web.Application:
     
     # Serve static files from artifacts/uploads
     try:
+        from tools.base import YOLO_ARTIFACTS
+        app.router.add_static("/artifacts/", path=str(YOLO_ARTIFACTS), name="artifacts")
+        
         uploads_dir = str(get_uploads_dir())
         app.router.add_static("/uploads/", path=uploads_dir, name="uploads")
     except Exception:

@@ -59,94 +59,93 @@ async def execute_tool_direct(
     import inspect
 
     res = None
+
+    # ── Path 1: MCP tool ──
     if mcp_manager.get_server_for_tool(func_name):
         try:
             res = await mcp_manager.call_tool(func_name, func_args)
         except Exception as e:
             res = f"MCP Execution error: {e}"
 
-    if res is None:
+    else:
+        # ── Path 2: Native / Plugin tool ──
         target = TOOL_REGISTRY.get(func_name) or PLUGIN_HANDLERS.get(func_name)
         if func_name == "compact_conversation":
             target = _compact_history
 
-    if target:
-        # Inject standard contextual arguments if the tool signature requires them
-        sig = inspect.signature(target)
-        if "user_id" in sig.parameters and "user_id" not in func_args:
-            func_args["user_id"] = user_id
-        if "session" in sig.parameters and "session" not in func_args:
-            func_args["session"] = session
-        if "router" in sig.parameters and "router" not in func_args:
-            global router
-            func_args["router"] = router
-        if "confirm_func" in sig.parameters and "confirm_func" not in func_args:
-            func_args["confirm_func"] = lambda a, t: True
-            
-        # Special-case injections for complex background task runners
-        if func_name == "run_background_mission" and "mission_coro" in sig.parameters:
-            func_args["mission_coro"] = lambda tid: _run_with_history_sync(tid, func_args.get("objective", ""), session, signal_handler)
-        elif func_name == "dispatch_parallel_agents" and "mission_coro" in sig.parameters:
-            func_args["mission_coro"] = lambda obj, tid: _run_with_history_sync(tid, obj, session, signal_handler)
+        if target:
+            # Inject standard contextual arguments if the tool signature requires them
+            sig = inspect.signature(target)
+            if "user_id" in sig.parameters and "user_id" not in func_args:
+                func_args["user_id"] = user_id
+            if "session" in sig.parameters and "session" not in func_args:
+                func_args["session"] = session
+            if "router" in sig.parameters and "router" not in func_args:
+                global router
+                func_args["router"] = router
+            if "confirm_func" in sig.parameters and "confirm_func" not in func_args:
+                func_args["confirm_func"] = lambda a, t: True
 
-        # Retry transient errors
-        _TRANSIENT_ERRORS = (TimeoutError, ConnectionError, OSError)
-        _MAX_RETRIES = 2
-        res = None
-        for _attempt in range(_MAX_RETRIES + 1):
-            try:
-                # Case 1: Purely async function (async def)
-                if inspect.iscoroutinefunction(target):
-                    res = await target(**func_args)
-                else:
-                    # Case 2/3: Sync function or Lambda
-                    # We run it in a thread to keep the event loop responsive
-                    res = await asyncio.to_thread(lambda: target(**func_args))
-                    
-                    # Case 4: The function (usually a lambda) returned a coroutine
-                    # This happens when the lambda wraps an async function
-                    if inspect.iscoroutine(res):
-                        # Important: coroutines MUST be awaited on the event loop thread
-                        res = await res
-                break  # Success
-            except _TRANSIENT_ERRORS as retry_err:
-                if _attempt < _MAX_RETRIES:
-                    backoff = (2**_attempt) * 0.5  # 0.5s, 1s
-                    log_agent(
-                        user_id,
-                        "🔄 RETRY",
-                        f"{func_name} attempt {_attempt+1} failed: {retry_err}. Retrying in {backoff}s...",
-                        Fore.YELLOW,
-                    )
-                    await asyncio.sleep(backoff)
-                else:
-                    res = f"Error after {_MAX_RETRIES + 1} attempts: {retry_err}"
-            except Exception as e:
-                res = f"Error in {func_name}: {e}"
-                break  # Non-transient error — don't retry
+            # Special-case injections for complex background task runners
+            if func_name == "run_background_mission" and "mission_coro" in sig.parameters:
+                func_args["mission_coro"] = lambda tid: _run_with_history_sync(tid, func_args.get("objective", ""), session, signal_handler)
+            elif func_name == "dispatch_parallel_agents" and "mission_coro" in sig.parameters:
+                func_args["mission_coro"] = lambda obj, tid: _run_with_history_sync(tid, obj, session, signal_handler)
 
-        if res is None:
-            res = ""
-        if not isinstance(res, str):
-            res = str(res)
+            # Retry transient errors
+            _TRANSIENT_ERRORS = (TimeoutError, ConnectionError, OSError)
+            _MAX_RETRIES = 2
+            for _attempt in range(_MAX_RETRIES + 1):
+                try:
+                    if inspect.iscoroutinefunction(target):
+                        res = await target(**func_args)
+                    else:
+                        res = await asyncio.to_thread(lambda: target(**func_args))
+                        if inspect.iscoroutine(res):
+                            res = await res
+                    break
+                except _TRANSIENT_ERRORS as retry_err:
+                    if _attempt < _MAX_RETRIES:
+                        backoff = (2**_attempt) * 0.5
+                        log_agent(user_id, "🔄 RETRY", f"{func_name} attempt {_attempt+1} failed: {retry_err}. Retrying in {backoff}s...", Fore.YELLOW)
+                        await asyncio.sleep(backoff)
+                    else:
+                        res = f"Error after {_MAX_RETRIES + 1} attempts: {retry_err}"
+                except Exception as e:
+                    res = f"Error in {func_name}: {e}"
+                    break
+        else:
+            # Tool not found in any registry
+            if signal_handler:
+                await signal_handler(
+                    f"{agent.TUIMessage.TOOL_RESULT}:{json.dumps({'name': func_name, 'result': f'Error: {func_name} not found.', 'call_id': call_id})}"
+                )
+            log_agent(user_id, "❌ RESULT", f"{func_name} not found in any registry", Fore.RED)
+            return f"Error: {func_name} not found."
 
-        if signal_handler:
-            await signal_handler(
-                f"{agent.TUIMessage.TOOL_RESULT}:{json.dumps({'name': func_name, 'result': res, 'call_id': call_id})}"
-            )
+    # ── Common result handling for both paths ──
+    if res is None:
+        res = ""
+    if not isinstance(res, str):
+        res = str(res)
 
-        if signal_handler and isinstance(res, str) and res.startswith("__SEND_FILE__:"):
-            sig = await signal_handler(res)
-            if sig:
-                res = sig
-        log_agent(
-            user_id,
-            "✅ RESULT",
-            str(res)[:200] + "..." if len(str(res)) > 200 else str(res),
-            Fore.GREEN,
+    if signal_handler:
+        await signal_handler(
+            f"{agent.TUIMessage.TOOL_RESULT}:{json.dumps({'name': func_name, 'result': res, 'call_id': call_id})}"
         )
-        return res
-    return f"Error: {func_name} not found."
+
+    if signal_handler and isinstance(res, str) and res.startswith("__SEND_FILE__:"):
+        sig_res = await signal_handler(res)
+        if sig_res:
+            res = sig_res
+
+    log_agent(
+        user_id,
+        "✅ RESULT",
+        str(res)[:200] + "..." if len(str(res)) > 200 else str(res),
+        Fore.GREEN,
+    )
+    return res
 
 
 def sanitize_history(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

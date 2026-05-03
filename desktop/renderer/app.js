@@ -809,6 +809,34 @@
               placeholder.innerHTML = `<strong>Result:</strong><pre><code>${escapeHtml(resultText)}</code></pre>`;
             }
             scrollToBottom();
+          } else if (type === 'artifact') {
+            const artifactWrapper = document.createElement('div');
+            artifactWrapper.className = 'artifact-card';
+            
+            // For file:// URLs, we might need to handle them differently depending on Electron security
+            // If served via /artifacts/ prefix, it works normally.
+            if (data.type === 'image') {
+              artifactWrapper.innerHTML = `
+                <div class="artifact-title">Generated Image: ${data.name}</div>
+                <img src="${data.url}" class="artifact-image" alt="${data.name}" style="max-width: 100%; border-radius: 8px; margin-top: 8px; cursor: pointer;" onclick="window.open('${data.url}')" />
+                <div class="artifact-actions" style="margin-top: 8px;">
+                  <button class="primary-btn sm" onclick="window.open('${data.url}')">View Full Size</button>
+                </div>
+              `;
+            } else {
+              artifactWrapper.innerHTML = `
+                <div class="artifact-title">Generated File: ${data.name}</div>
+                <div class="artifact-file-info" style="display: flex; align-items: center; gap: 10px; padding: 12px; background: rgba(0,0,0,0.05); border-radius: 8px; margin-top: 8px;">
+                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14.5 2 14.5 7.5 20 7.5"></polyline></svg>
+                   <span style="font-family: monospace; font-size: 0.9em;">${data.name}</span>
+                </div>
+                <div class="artifact-actions" style="margin-top: 8px;">
+                  <button class="primary-btn sm" onclick="window.open('${data.url}')">Open File</button>
+                </div>
+              `;
+            }
+            streamWrapper.insertBefore(artifactWrapper, statusEl);
+            scrollToBottom();
           } else if (type === 'needs_confirmation') {
             // Phase 2: Native HITL UI
             streamDone = true;
@@ -1481,7 +1509,7 @@
         
         currentMcpServers[name] = {
           command: cmd,
-          args: args ? args.split(',').map(s => s.trim()) : [],
+          args: args ? args.split(',').map(s => s.trim().replace(/^["'](.*)["']$/, '$1')) : [],
           env: envObj
         };
         

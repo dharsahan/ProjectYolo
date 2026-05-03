@@ -192,6 +192,18 @@ def gui_screenshot(save_path: str = "screenshot.png") -> str:
 
 
 @register_tool()
+def gui_send_screenshot() -> str:
+    """Take a screenshot of the current screen and send it directly to the UI as an artifact."""
+    try:
+        ts = _ts()
+        path = _ARTIFACTS_DIR / f"gui_share_{ts}.png"
+        gui_screenshot(str(path))
+        return f"__SEND_FILE__:{path.resolve()}"
+    except Exception as e:
+        return f"Error sending screenshot: {e}"
+
+
+@register_tool()
 def gui_get_screen_size() -> str:
     """Get the screen resolution. Uses xrandr as fallback."""
     _check_pyautogui()

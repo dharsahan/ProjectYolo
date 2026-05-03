@@ -102,7 +102,11 @@ class MCPManager:
 
     async def cleanup(self):
         """Close all connections."""
-        await self.exit_stack.aclose()
+        try:
+            await self.exit_stack.aclose()
+        except Exception:
+            pass
+        self.exit_stack = AsyncExitStack()
         self.sessions.clear()
         self.tool_schemas.clear()
         self._tool_to_server.clear()
@@ -133,7 +137,7 @@ class MCPManager:
                         normalized.append(str(text))
                     else:
                         normalized.append(str(item))
-                return "\\n".join(normalized)
+                return "\n".join(normalized)
             return str(result.content)
             
         except Exception as e:
@@ -142,3 +146,23 @@ class MCPManager:
 
 # Global instance
 mcp_manager = MCPManager()
+
+from tools.registry import register_tool
+
+@register_tool("list_mcp_servers")
+async def list_mcp_servers() -> str:
+    """Lists all configured MCP servers and their current connection status."""
+    manager = mcp_manager
+    await manager.initialize() # Ensure initialized
+    
+    if not manager.servers:
+        return "No MCP servers configured."
+    
+    lines = ["Configured MCP Servers:"]
+    for name, config in manager.servers.items():
+        status = "Connected" if name in manager.sessions else "Disconnected/Error"
+        tool_count = len([t for t, s in manager._tool_to_server.items() if s == name])
+        lines.append(f"- {name}: {status} ({tool_count} tools)")
+        lines.append(f"  Command: {config.get('command')} {' '.join(config.get('args', []))}")
+    
+    return "\n".join(lines)

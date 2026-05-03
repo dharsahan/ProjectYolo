@@ -1,4 +1,5 @@
 import os
+import datetime
 from pathlib import Path
 from openai import OpenAI
 from tools.registry import register_tool
@@ -53,3 +54,47 @@ def transcribe_audio(file_path: str) -> str:
     except Exception as e:
         audit_log("transcribe_audio", {"file": file_path}, "error", str(e))
         return f"Error transcribing audio: {str(e)}"
+
+
+@register_tool()
+def generate_image(prompt: str) -> str:
+    """
+    Generate an image based on a prompt using DALL-E 3.
+    The image is saved to the artifacts directory and sent to the UI.
+    """
+    try:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return "Error: OPENAI_API_KEY is not set. Cannot generate image."
+
+        client = OpenAI(api_key=api_key, base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+        
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+        )
+
+        image_url = response.data[0].url
+        
+        # Download image to artifacts
+        import httpx
+        from tools.base import YOLO_ARTIFACTS
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"gen_{timestamp}.png"
+        path = YOLO_ARTIFACTS / filename
+        
+        with httpx.Client() as h_client:
+            resp = h_client.get(image_url)
+            resp.raise_for_status()
+            path.write_bytes(resp.content)
+            
+        audit_log("generate_image", {"prompt": prompt, "file": filename}, "success")
+        return f"__SEND_FILE__:{path.resolve()}"
+        
+    except Exception as e:
+        audit_log("generate_image", {"prompt": prompt}, "error", str(e))
+        return f"Error generating image: {e}"

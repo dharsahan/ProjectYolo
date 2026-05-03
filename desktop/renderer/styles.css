@@ -2068,3 +2068,56 @@ body::before {
   height: 16px;
 }
 
+/* Artifact Cards */
+.artifact-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin: 12px 0;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  animation: slideUp 0.3s ease-out;
+}
+
+.artifact-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.artifact-image {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  transition: transform 0.2s ease;
+}
+
+.artifact-image:hover {
+  transform: scale(1.01);
+}
+
+.artifact-file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.artifact-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
