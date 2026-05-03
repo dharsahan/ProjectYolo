@@ -21,7 +21,7 @@ def request_help(task_id: str, reason: str, context: str) -> str:
     return f"__WORKER_TERMINATE__: Task {task_id} marked as needs_help."
 
 @register_tool()
-def spawn_worker(user_id: int, role: str, objective: str) -> str:
+async def spawn_worker(user_id: int, role: str, objective: str) -> str:
     """Manager tool: Spawn an isolated worker agent for a specific sub-task."""
     task_id = f"w_{uuid.uuid4().hex[:8]}"
     add_worker_task(task_id, user_id, role, objective)
@@ -29,7 +29,7 @@ def spawn_worker(user_id: int, role: str, objective: str) -> str:
     # We need to dispatch the async loop. 
     # Since tools are mostly sync in their signature but executed async by execute_tool_direct, 
     # we use asyncio.create_task to fire and forget.
-    from agent import run_worker_loop
+    from worker import run_worker_loop
     from tools.memory_service import get_memory
     
     loop = asyncio.get_running_loop()

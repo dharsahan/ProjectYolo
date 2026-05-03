@@ -316,6 +316,9 @@ body {
   padding: 14px 18px; font-size: 15px; line-height: 1.6; color: var(--text-primary);
   border: 1px solid var(--border);
   position: relative;
+  overflow-x: auto;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .message.user .msg-content {
   font-family: 'DM Sans', sans-serif; font-weight: 500; letter-spacing: -0.01em;
@@ -359,6 +362,28 @@ body {
 .msg-content li { margin-bottom: 6px; }
 .msg-content a { color: var(--text-primary); text-decoration: underline; text-underline-offset: 4px; transition: color 0.15s; }
 .msg-content a:hover { color: var(--text-muted); }
+
+/* Tables */
+.msg-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 14px;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.msg-content th, .msg-content td {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.msg-content th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
 
 /* Message Actions */
 .message-actions { 

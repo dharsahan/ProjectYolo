@@ -55,7 +55,12 @@ async def dispatch_parallel_agents(
     logger.info(f"Dispatching {len(objectives)} parallel agents for user {user_id}")
 
     task_specs: list[tuple[str, str, int]] = []
-    for index, objective in enumerate(objectives, start=1):
+    for index, obj_val in enumerate(objectives, start=1):
+        if isinstance(obj_val, dict):
+            objective = obj_val.get("objective", str(obj_val))
+        else:
+            objective = str(obj_val)
+            
         task_id = str(uuid.uuid4())[:8]
         labeled_objective = f"[parallel:{index}/{len(objectives)}] {objective}"
         add_background_task(task_id, user_id, labeled_objective)

@@ -147,7 +147,8 @@ class LLMRouter:
 
             if stream:
                 kwargs["stream"] = True
-                kwargs["stream_options"] = {"include_usage": True}
+                if self.config.provider == "openai":
+                    kwargs["stream_options"] = {"include_usage": True}
 
             extra_headers = {}
             if self.config.provider == "openrouter":
