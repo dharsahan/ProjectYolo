@@ -59,8 +59,7 @@ class TestAgentPromptArchitecture(unittest.TestCase):
 
         system_messages = [m for m in session.message_history if m.get("role") == "system"]
         self.assertEqual(len(system_messages), 1)
-        self.assertIn("[MEMORY_CONTEXT_TRANSIENT]", system_messages[0]["content"])
-
+        self.assertIn("[MEMORY_CONTEXT]", system_messages[0]["content"])
     def test_normalizer_collapses_multiple_system_messages(self):
         with loaded_agent(
             YOLO_SYSTEM_PROMPT_VERSION="unified",

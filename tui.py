@@ -4,8 +4,7 @@ from textual.widgets import Header, Footer, Static, Button, Label
 from textual.screen import ModalScreen
 from tui_widgets import ChatWidget, UserInput, WorkWidget, LogWidget
 import agent
-from session import Session
-import asyncio
+from session import SessionManager
 import json
 import monitoring
 from tools import database_ops
@@ -88,7 +87,12 @@ class AgenticIDE(App):
     ]
 
     def on_mount(self) -> None:
-        self.session = Session(user_id=1, message_history=[], yolo_mode=True)
+        self.user_id = 1
+        self.session_manager = SessionManager()
+        self.session = self.session_manager.get_or_create(self.user_id)
+        # Default TUI to YOLO mode for power users
+        self.session.yolo_mode = True
+        
         self.set_interval(2.0, self.refresh_dashboard)
 
     def action_toggle_panel(self) -> None:
@@ -180,8 +184,10 @@ class AgenticIDE(App):
                     await agent.run_agent_turn(
                         current_prompt if not is_resume else None, 
                         self.session, 
-                        signal_handler=signal_handler
+                        signal_handler=signal_handler,
+                        memory_service=self.session_manager.memory
                     )
+                    self.session_manager.save(self.user_id)
                     break
                 except agent.PendingConfirmationError:
                     # session.pending_confirmations now contains ALL of them.

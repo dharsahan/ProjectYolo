@@ -54,9 +54,12 @@ class HybridMemoryEngine:
         return getattr(self.mem0, name)
         
     def add(self, fact, user_id=None, **kwargs):
+        # Tiered engine handles int/str internally
         self.tiered.add(fact, user_id, **kwargs)
         try:
-            self.mem0.add(fact, user_id=user_id, **kwargs)
+            # mem0 requires string user_id for its internal metadata filtering
+            m_uid = str(user_id) if user_id is not None else None
+            self.mem0.add(fact, user_id=m_uid, **kwargs)
         except Exception as e:
             audit_log("memory_hybrid_add", {}, "error", str(e))
 

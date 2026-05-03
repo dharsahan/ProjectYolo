@@ -40,7 +40,7 @@ def memory_add(user_id: int, fact: str) -> str:
     """Manually add a specific fact using shared instance."""
     try:
         memory = get_memory()
-        memory.add(fact, user_id=str(user_id))
+        memory.add(fact, user_id=user_id)
         audit_log("memory_add", {"user_id": user_id, "fact": fact}, "success")
         return f"Fact successfully remembered: `{fact}`"
     except Exception as e:
@@ -67,7 +67,7 @@ def memory_wipe(user_id: int) -> str:
     """Permanently delete all memories using shared instance."""
     try:
         memory = get_memory()
-        memory.delete_all(user_id=str(user_id))
+        memory.delete_all(user_id=user_id)
         audit_log("memory_wipe", {"user_id": user_id}, "success")
         return "All your memories have been permanently deleted."
     except Exception as e:

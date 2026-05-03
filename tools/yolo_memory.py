@@ -96,10 +96,8 @@ class TieredMemoryEngine:
             
         return min(max(score, 0.0), 10.0)
 
-    def add(self, fact, user_id: str = None, category: str = "fact", **kwargs):
+    def add(self, fact, user_id: int = 0, category: str = "fact", **kwargs):
         import re
-        if user_id is None:
-            user_id = kwargs.get("user_id", "0")
         uid = int(user_id)
         
         if isinstance(fact, list):
@@ -140,33 +138,36 @@ class TieredMemoryEngine:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("BEGIN IMMEDIATE")
-            self._consolidate_internal(cursor, user_id)
+            self._consolidate_internal(cursor, int(user_id))
             conn.commit()
 
     def _consolidate_internal(self, cursor, user_id: int):
-        cursor.execute("SELECT id, event, importance FROM L2_episodic_memory WHERE user_id = ?", (user_id,))
+        import datetime
+        uid = int(user_id)
+        cursor.execute("SELECT id, event, importance FROM L2_episodic_memory WHERE user_id = ?", (uid,))
         events = cursor.fetchall()
+        now_str = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         for row in events:
             if row['importance'] >= 3.0:
                 # Prevent duplicates in L3
-                cursor.execute("SELECT rowid FROM L3_semantic_memory WHERE user_id = ? AND fact = ?", (user_id, row['event']))
+                cursor.execute("SELECT rowid FROM L3_semantic_memory WHERE user_id = ? AND fact = ?", (uid, row['event']))
                 if not cursor.fetchone():
                     cursor.execute("""
                         INSERT INTO L3_semantic_memory (user_id, fact, category, importance, created_at, updated_at)
-                        VALUES (?, ?, 'fact', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """, (user_id, row['event'], row['importance']))
+                        VALUES (?, ?, 'fact', ?, ?, ?)
+                    """, (uid, row['event'], row['importance'], now_str, now_str))
                     
                 # Infer patterns into L4
                 event_lower = row['event'].lower()
                 if row['importance'] >= 6.0 and ("always" in event_lower or "never" in event_lower or "prefers" in event_lower):
-                    cursor.execute("SELECT id FROM L4_pattern_memory WHERE user_id = ? AND pattern = ?", (user_id, row['event']))
+                    cursor.execute("SELECT id FROM L4_pattern_memory WHERE user_id = ? AND pattern = ?", (uid, row['event']))
                     if not cursor.fetchone():
                         cursor.execute("""
                             INSERT INTO L4_pattern_memory (user_id, pattern, confidence)
                             VALUES (?, ?, ?)
-                        """, (user_id, row['event'], row['importance']))
+                        """, (uid, row['event'], row['importance']))
 
-        cursor.execute("DELETE FROM L2_episodic_memory WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM L2_episodic_memory WHERE user_id = ?", (uid,))
 
     def memory_stats(self, user_id: int) -> dict:
         stats = {}
@@ -249,17 +250,19 @@ class TieredMemoryEngine:
                 return []
                 
             # Apply recency decay: score = importance * exp(-ln(2) * days_old / 30)
-            now = datetime.datetime.utcnow()
+            now = datetime.datetime.now(datetime.timezone.utc)
             scored_results = []
             for r in raw_results:
                 try:
-                    created_at = datetime.datetime.strptime(r['created_at'], '%Y-%m-%d %H:%M:%S')
-                    days_old = (now - created_at).days
+                    # SQLite stored string should be in ISO or similar format, 
+                    # but if we used utcnow().strftime earlier, we need to parse it back.
+                    dt = datetime.datetime.strptime(r['created_at'], '%Y-%m-%d %H:%M:%S').replace(tzinfo=datetime.timezone.utc)
+                    days_old = (now - dt).days
                     if days_old < 0:
                         days_old = 0
                 except Exception:
                     days_old = 0
-                
+
                 decay = math.exp(-math.log(2) * days_old / 30.0)
                 final_score = float(r['importance']) * decay
                 scored_results.append((final_score, r))

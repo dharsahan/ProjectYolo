@@ -1,17 +1,15 @@
 import asyncio
 import os
+import logging
 from typing import Any
 from session import Session
+import agent
+
+logger = logging.getLogger(__name__)
 
 async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str, memory_service: Any) -> None:
-    """An isolated loop for a specialized worker agent."""
+    """An isolated loop for a specialized worker agent using central orchestration."""
     from tools.database_ops import add_worker_task, update_worker_status
-    import agent
-    import tools
-    from tool_dispatcher import execute_tool_direct
-    
-    # Use the global router from agent module
-    router = agent.router
     
     # Ensure a record exists in the DB immediately
     try:
@@ -20,7 +18,10 @@ async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str,
         pass # If already added by spawn_worker, ignore
 
     worker_session = Session(user_id=user_id)
+    # Default worker to YOLO mode as it runs autonomously
+    worker_session.yolo_mode = True
     
+    # Specialized system prompt for the worker
     system_prompt = (
         f"You are a specialized worker agent taking on the role of: {role}.\n"
         f"Your specific objective is: {objective}\n"
@@ -31,6 +32,7 @@ async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str,
         "Do NOT ask the user for input. You run autonomously."
     )
     
+    # Initialize history with the specialized prompt
     worker_session.message_history = [{"role": "system", "content": system_prompt}]
     
     max_turns = int(os.getenv("WORKER_MAX_TURNS", "30"))
@@ -38,80 +40,47 @@ async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str,
     turns = 0
     
     try:
-        # Prevent zombie workers by adding a global timeout
         async def _run():
             nonlocal turns
+            current_prompt = None # Start with None since system prompt is already set
+            
             while turns < max_turns:
                 turns += 1
                 print(f"[{task_id}] Turn {turns}...")
+                
                 try:
-                    response = await router.chat_completions(
-                        messages=worker_session.message_history,
-                        tools=tools.TOOLS_SCHEMAS,
-                        tool_choice="auto",
-                        stream=False
+                    result = await agent.run_agent_turn(
+                        current_prompt,
+                        worker_session,
+                        signal_handler=None,
+                        memory_service=memory_service
                     )
                     
-                    if not getattr(response, "choices", None) or len(response.choices) == 0:
-                        print(f"[{task_id}] Warning: Empty choices from LLM, retrying...")
-                        await asyncio.sleep(1)
-                        continue
-                        
-                    msg = response.choices[0].message
-                    worker_session.message_history.append(msg.model_dump(exclude_none=True))
-                    
-                    if not getattr(msg, "tool_calls", None):
-                        # Worker didn't call a tool. Force it to report or continue.
-                        worker_session.message_history.append({
-                            "role": "user", 
-                            "content": "You did not call a tool. You must either continue working using tools, `report_completion`, or `request_help`."
-                        })
-                        continue
-                        
-                    terminate = False
-                    for tc in msg.tool_calls:
-                        print(f"[{task_id}] Executing {tc.function.name}...")
-                        result = await execute_tool_direct(
-                            tc.function.name, 
-                            tc.function.arguments, 
-                            user_id, 
-                            signal_handler=None, 
-                            session=worker_session
-                        )
-                        print(f"[{task_id}] Result: {result[:100]}...")
-                        
-                        worker_session.message_history.append({
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "name": tc.function.name,
-                            "content": result
-                        })
-                        
-                        if "__WORKER_TERMINATE__" in result:
-                            terminate = True
-                    
-                    if terminate:
+                    if "__WORKER_TERMINATE__" in result:
+                        print(f"[{task_id}] Worker task terminated normally.")
                         break
                         
+                    # If the agent didn't terminate, continue with a reminder
+                    current_prompt = "Please continue working towards the objective. Use `report_completion` once finished."
+                    
                 except Exception as e:
-                    from tools.database_ops import update_worker_status
                     err_msg = str(e)
+                    print(f"[{task_id}] Error in worker turn: {err_msg}")
                     if "401" in err_msg or "unauthorized" in err_msg.lower():
                         update_worker_status(task_id, "failed", "Unauthorized: LLM token expired or invalid.")
                     else:
-                        update_worker_status(task_id, "failed", f"Worker crashed: {e}")
-                    return True # Error handled
+                        update_worker_status(task_id, "failed", f"Worker crashed during turn: {e}")
+                    return True # Handled
 
             if turns >= max_turns:
-                from tools.database_ops import update_worker_status
                 update_worker_status(task_id, "failed", "Worker hit max turns limit.")
             return False
 
         await asyncio.wait_for(_run(), timeout=worker_timeout)
+        
     except asyncio.TimeoutError:
-        from tools.database_ops import update_worker_status
         update_worker_status(task_id, "failed", f"Worker timed out after {worker_timeout} seconds.")
     except Exception as e:
-        from tools.database_ops import update_worker_status
+        logger.exception("Global worker error")
         update_worker_status(task_id, "failed", f"Global worker loop error: {e}")
 
