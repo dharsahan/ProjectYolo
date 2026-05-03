@@ -720,6 +720,41 @@ async def handle_update_env(request: web.Request) -> web.Response:
     except Exception as exc:
         return web.json_response({"error": str(exc)}, status=500)
 
+async def handle_get_mcp_servers(request: web.Request) -> web.Response:
+    """GET /mcp/servers — Get current MCP configuration"""
+    try:
+        from tools.base import YOLO_HOME
+        import json
+        mcp_path = YOLO_HOME / "mcp_servers.json"
+        if not mcp_path.exists():
+            return web.json_response({"mcpServers": {}})
+        with open(mcp_path, "r") as f:
+            data = json.load(f)
+        return web.json_response(data)
+    except Exception as exc:
+        return web.json_response({"error": str(exc)}, status=500)
+
+async def handle_post_mcp_servers(request: web.Request) -> web.Response:
+    """POST /mcp/servers — Update MCP configuration"""
+    try:
+        from tools.base import YOLO_HOME
+        from tools.mcp_manager import mcp_manager
+        import json
+        data = await request.json()
+        
+        mcp_path = YOLO_HOME / "mcp_servers.json"
+        with open(mcp_path, "w") as f:
+            json.dump(data, f, indent=4)
+        
+        # Reload MCP manager configuration
+        await mcp_manager.cleanup()
+        mcp_manager._connections_initialized = False
+        await mcp_manager.initialize()
+        
+        return web.json_response({"status": "success", "message": "MCP servers updated and reloaded"})
+    except Exception as exc:
+        return web.json_response({"error": str(exc)}, status=500)
+
 
 # ── App setup ──
 
@@ -731,6 +766,8 @@ def create_app() -> web.Application:
     app.router.add_post("/command", handle_command)
     app.router.add_post("/transcribe", handle_transcribe)
     app.router.add_post("/config/env", handle_update_env)
+    app.router.add_get("/mcp/servers", handle_get_mcp_servers)
+    app.router.add_post("/mcp/servers", handle_post_mcp_servers)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/session", handle_session_info)
     app.router.add_get("/sessions", handle_get_sessions)

@@ -318,6 +318,28 @@ ipcMain.handle('get-bridge-port', () => {
   return BRIDGE_PORT;
 });
 
+ipcMain.handle('get-mcp-servers', async () => {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/mcp/servers`);
+    return await resp.json();
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('update-mcp-servers', async (_event, payload) => {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${BRIDGE_PORT}/mcp/servers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return await resp.json();
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 // ── App lifecycle ──
 
 app.whenReady().then(() => {

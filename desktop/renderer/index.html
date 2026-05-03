@@ -229,6 +229,10 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 3h10a2 2 0 0 1 2 2Z"/></svg>
               <span>Memory</span>
             </button>
+            <button class="settings-nav-item" data-category="mcp">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>MCP Servers</span>
+            </button>
             <div class="settings-nav-spacer"></div>
             <button class="settings-nav-item" data-category="about">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -334,7 +338,14 @@
                   <input id="setting-base-url" type="text" placeholder="http://localhost:11434/v1" class="setting-input-small" style="width: 150px;" />
                 </div>
                 <div class="setting-item" style="justify-content: flex-end; border-bottom: none; padding-bottom: 0;">
-                  <button id="save-llm-settings" class="primary-btn">Save Provider Settings</button>
+                  <button id="save-llm-settings" class="primary-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                      <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                      <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                    Save Provider Settings
+                  </button>
                 </div>
               </div>
             </div>
@@ -405,6 +416,44 @@
                     <span>Permanently wipe all long-term memories for this user.</span>
                   </div>
                   <button id="btn-wipe-memory" class="danger-btn">Wipe All Memory</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- MCP Panel -->
+            <div class="settings-panel" data-category="mcp">
+              <div class="settings-section">
+                <h3>Model Context Protocol</h3>
+                <div class="setting-item" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                  <div class="setting-info" style="margin-bottom: 10px;">
+                    <label>Connected Servers</label>
+                    <span>MCP allows the agent to interact with local tools, external APIs, and services.</span>
+                  </div>
+                  <div id="mcp-servers-list" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Server items will be injected here -->
+                  </div>
+                </div>
+              </div>
+              <div class="settings-section">
+                <h3>Add New Server</h3>
+                <div class="setting-item" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                  <div class="setting-info">
+                    <label>Server Details</label>
+                    <span>Define the command and arguments to start an MCP server.</span>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 10px; background: var(--bg-tertiary); padding: 12px; border-radius: 8px;">
+                    <input id="setting-mcp-name" type="text" placeholder="Server Name (e.g. everything)" class="setting-input-small" style="width: 100%;" />
+                    <input id="setting-mcp-cmd" type="text" placeholder="Command (e.g. npx)" class="setting-input-small" style="width: 100%;" />
+                    <input id="setting-mcp-args" type="text" placeholder="Args (comma-separated, e.g. -y,@modelcontextprotocol/server-everything)" class="setting-input-small" style="width: 100%;" />
+                    <input id="setting-mcp-env" type="text" placeholder="Env Vars (e.g. BRAVE_API_KEY=123, GITHUB_TOKEN=456)" class="setting-input-small" style="width: 100%;" />
+                    <button id="save-mcp-server" class="primary-btn" style="align-self: flex-end; margin-top: 5px;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                      Add Server
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

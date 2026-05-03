@@ -40,6 +40,7 @@ from prompt_builder import (
     _missing_self_upgrade_phases,
     _repo_has_tests,
 )
+from tools.mcp_manager import mcp_manager
 
 class TUIMessage:
     STREAM = "__STREAM__"
@@ -300,6 +301,10 @@ async def run_agent_turn(
             session.message_history = sanitize_history(session.message_history)
             session.history_dirty = False
 
+        # Initialize MCP manager and gather dynamic tools
+        await mcp_manager.initialize()
+        current_tools = tools.TOOLS_SCHEMAS + mcp_manager.tool_schemas
+
         # ── LLM Call & Streaming ──
         max_llm_retries = 3
         full_content = ""
@@ -317,7 +322,7 @@ async def run_agent_turn(
             try:
                 response = await router.chat_completions(
                     messages=session.message_history,
-                    tools=tools.TOOLS_SCHEMAS,
+                    tools=current_tools,
                     tool_choice="auto",
                     stream=True,
                 )

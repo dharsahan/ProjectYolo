@@ -1377,6 +1377,128 @@
       });
     }
 
+    // MCP Servers Settings
+    const mcpServersList = document.getElementById('mcp-servers-list');
+    const btnSaveMcp = document.getElementById('save-mcp-server');
+    let currentMcpServers = {};
+
+    async function loadMcpServers() {
+      if (!window.yoloAPI?.getMcpServers) return;
+      try {
+        const data = await window.yoloAPI.getMcpServers();
+        currentMcpServers = data.mcpServers || {};
+        renderMcpServers();
+      } catch (e) {
+        console.error("Failed to load MCP servers", e);
+      }
+    }
+
+    function renderMcpServers() {
+      if (!mcpServersList) return;
+      mcpServersList.innerHTML = '';
+      const serverNames = Object.keys(currentMcpServers);
+      if (serverNames.length === 0) {
+        mcpServersList.innerHTML = '<span style="color: var(--text-secondary); font-style: italic; font-size: 13px;">No MCP servers configured.</span>';
+        return;
+      }
+      
+      for (const name of serverNames) {
+        const server = currentMcpServers[name];
+        const el = document.createElement('div');
+        el.style.display = 'flex';
+        el.style.justifyContent = 'space-between';
+        el.style.alignItems = 'center';
+        el.style.padding = '8px 12px';
+        el.style.background = 'var(--bg-tertiary)';
+        el.style.borderRadius = '6px';
+        
+        const envStr = server.env && Object.keys(server.env).length > 0 
+          ? `<br><span style="font-size: 11px; color: var(--accent-color);">Env: ${Object.keys(server.env).length} vars</span>` 
+          : '';
+          
+        el.innerHTML = `
+          <div style="display: flex; flex-direction: column; overflow: hidden; margin-right: 10px;">
+            <strong style="font-size: 14px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">${name}</strong>
+            <span style="font-size: 12px; color: var(--text-secondary); white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">${server.command} ${server.args ? server.args.join(' ') : ''}${envStr}</span>
+          </div>
+          <button class="danger-btn" data-name="${name}" style="padding: 4px 8px; font-size: 12px; flex-shrink: 0;">Remove</button>
+        `;
+        
+        el.querySelector('button').addEventListener('click', async (e) => {
+          const sName = e.target.dataset.name;
+          delete currentMcpServers[sName];
+          await saveMcpServers();
+        });
+        
+        mcpServersList.appendChild(el);
+      }
+    }
+
+    async function saveMcpServers() {
+      if (!window.yoloAPI?.updateMcpServers) return;
+      try {
+        const res = await window.yoloAPI.updateMcpServers({ mcpServers: currentMcpServers });
+        if (res.error) {
+          window.yoloAPI.showNotification('MCP Error', res.error);
+        } else {
+          renderMcpServers();
+          window.yoloAPI.showNotification('MCP Servers Saved', res.message || 'Updated successfully');
+        }
+      } catch (e) {
+        window.yoloAPI.showNotification('MCP Error', e.message);
+      }
+    }
+
+    if (btnSaveMcp) {
+      btnSaveMcp.addEventListener('click', async () => {
+        const nameInput = document.getElementById('setting-mcp-name');
+        const cmdInput = document.getElementById('setting-mcp-cmd');
+        const argsInput = document.getElementById('setting-mcp-args');
+        const envInput = document.getElementById('setting-mcp-env');
+        
+        const name = nameInput.value.trim();
+        const cmd = cmdInput.value.trim();
+        let args = argsInput.value.trim();
+        let envRaw = envInput.value.trim();
+        
+        if (!name || !cmd) {
+          window.yoloAPI.showNotification('Validation Error', 'Server name and command are required');
+          return;
+        }
+        
+        // Parse ENV
+        let envObj = {};
+        if (envRaw) {
+          const parts = envRaw.split(',');
+          for (const p of parts) {
+            const [k, v] = p.split('=');
+            if (k && v) envObj[k.trim()] = v.trim();
+          }
+        }
+        
+        btnSaveMcp.textContent = 'Adding...';
+        btnSaveMcp.disabled = true;
+        
+        currentMcpServers[name] = {
+          command: cmd,
+          args: args ? args.split(',').map(s => s.trim()) : [],
+          env: envObj
+        };
+        
+        await saveMcpServers();
+        
+        nameInput.value = '';
+        cmdInput.value = '';
+        argsInput.value = '';
+        if (envInput) envInput.value = '';
+        btnSaveMcp.textContent = 'Add Server';
+        btnSaveMcp.disabled = false;
+      });
+    }
+
+    // Call loadMcpServers to populate initially
+    loadMcpServers();
+
     // Bridge status
     if (window.yoloAPI?.onBridgeStatus) {
       window.yoloAPI.onBridgeStatus((status) => {
@@ -1448,6 +1570,24 @@
           mathInline.push(formula);
           return `${prefix}@@MATH_INLINE_${mathInline.length - 1}@@`;
         });
+
+        // 3. Handle <think> or <thought> tags (Thinking Space)
+        processedText = processedText.replace(/<(think|thought)>([\s\S]*?)<\/\1>/gi, (match, tag, content) => {
+          return `<details class="thinking-space"><summary>Thought Process</summary><div class="thinking-content">${content}</div></details>`;
+        });
+        // Handle unclosed tags during streaming
+        const openThink = processedText.lastIndexOf('<think>');
+        const closeThink = processedText.lastIndexOf('</think>');
+        const openThought = processedText.lastIndexOf('<thought>');
+        const closeThought = processedText.lastIndexOf('</thought>');
+
+        if ((openThink > closeThink) || (openThought > closeThought)) {
+          const isThink = openThink > openThought;
+          const tag = isThink ? 'think' : 'thought';
+          const openIdx = isThink ? openThink : openThought;
+          const content = processedText.substring(openIdx + tag.length + 2);
+          processedText = processedText.substring(0, openIdx) + `<details class="thinking-space" open><summary>Thinking...</summary><div class="thinking-content">${content}</div></details>`;
+        }
 
         const renderer = new marked.Renderer();
         const originalCodeRenderer = renderer.code.bind(renderer);

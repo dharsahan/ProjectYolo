@@ -55,11 +55,20 @@ async def execute_tool_direct(
 
     from tools.registry import TOOL_REGISTRY
     from tools.plugin_manager import PLUGIN_HANDLERS
+    from tools.mcp_manager import mcp_manager
     import inspect
 
-    target = TOOL_REGISTRY.get(func_name) or PLUGIN_HANDLERS.get(func_name)
-    if func_name == "compact_conversation":
-        target = _compact_history
+    res = None
+    if mcp_manager.get_server_for_tool(func_name):
+        try:
+            res = await mcp_manager.call_tool(func_name, func_args)
+        except Exception as e:
+            res = f"MCP Execution error: {e}"
+
+    if res is None:
+        target = TOOL_REGISTRY.get(func_name) or PLUGIN_HANDLERS.get(func_name)
+        if func_name == "compact_conversation":
+            target = _compact_history
 
     if target:
         # Inject standard contextual arguments if the tool signature requires them
