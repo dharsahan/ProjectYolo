@@ -58,17 +58,13 @@ _terminal_sessions: dict[str, _TerminalSession] = {}
 _terminal_lock = threading.Lock()
 
 
-# Regex to strip ANSI escape sequences (colors, cursor movement, OSC, etc.)
-_ANSI_RE = re.compile(
+# Regex to strip ONLY invisible control sequences while preserving printable content.
+# This keeps ASCII art, box-drawing chars, tables, and color codes intact.
+_CONTROL_RE = re.compile(
     r"""
     \x1b        # ESC character
     (?:         # followed by:
-      \[        #   CSI sequences: ESC [ ... final_byte
-      [0-?]*    #     parameter bytes
-      [ -/]*    #     intermediate bytes
-      [@-~]     #     final byte
-    |
-      \]        #   OSC sequences: ESC ] ... (BEL or ST)
+      \]        #   OSC sequences: ESC ] ... (BEL or ST)  — window titles, etc.
       [^\x07]*  #     payload
       (?:\x07|\x1b\\)  # terminated by BEL or ST
     |
@@ -77,27 +73,46 @@ _ANSI_RE = re.compile(
       [>=]      # Keypad modes
     |
       \#\d      # Line height
-    |
-      [A-Z]     # Two-char sequences like ESC M
     )
     | \x0f      # SI (Shift In)
     | \x0e      # SO (Shift Out)
-    | \r        # Carriage return (strip to avoid overwritten lines)
     """,
     re.VERBOSE,
 )
 
 
-def _strip_ansi(text: str) -> str:
-    """Remove ANSI escape sequences and control characters from terminal output."""
-    cleaned = _ANSI_RE.sub("", text)
-    # Collapse excessive blank lines (common after stripping prompts)
+def _process_carriage_returns(text: str) -> str:
+    """Simulate carriage-return overwrites so the final visible line is preserved.
+
+    Many CLI tools (progress bars, spinners) use \\r to rewrite a line in-place.
+    Instead of stripping \\r blindly (which concatenates all rewrites), we keep
+    only the *last* segment after the final \\r on each line.
+    """
+    out_lines: list[str] = []
+    for line in text.split("\n"):
+        if "\r" in line:
+            # Take the last CR-delimited segment (what you'd actually see)
+            segments = line.split("\r")
+            visible = segments[-1] if segments[-1] else (segments[-2] if len(segments) > 1 else "")
+            out_lines.append(visible)
+        else:
+            out_lines.append(line)
+    return "\n".join(out_lines)
+
+
+def _clean_terminal_output(text: str) -> str:
+    """Clean terminal output while preserving ASCII art, colors, and box-drawing characters."""
+    # 1. Remove truly invisible control sequences (OSC, charset, keypad)
+    cleaned = _CONTROL_RE.sub("", text)
+    # 2. Process carriage returns (simulate overwrite, keep final visible text)
+    cleaned = _process_carriage_returns(cleaned)
+    # 3. Collapse excessive blank lines (common after stripping prompts)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
 
 
 def _trim_output(text: str) -> str:
-    text = _strip_ansi(text)
+    text = _clean_terminal_output(text)
     if len(text) <= MAX_OUTPUT_CHARS:
         return text
     trimmed = text[:MAX_OUTPUT_CHARS]
@@ -167,14 +182,12 @@ def terminal_start(shell: str = "", cwd: str = "") -> str:
         if not shell_parts:
             return "Error: Invalid shell command."
 
-        # Build a clean environment to suppress fancy prompts and motd
+        # Build a clean environment — keep TERM=xterm so programs produce
+        # full output (ASCII art, box-drawing, tables) instead of degraded plain text.
         clean_env = os.environ.copy()
-        clean_env["TERM"] = "dumb"
-        clean_env["NO_COLOR"] = "1"
+        clean_env["TERM"] = "xterm-256color"
         clean_env["PS1"] = "$ "
         clean_env["PS2"] = "> "
-        clean_env.pop("LS_COLORS", None)
-        clean_env.pop("LSCOLORS", None)
         clean_env.pop("PROMPT_COMMAND", None)
 
         # Determine shell-specific flags to suppress rc files and greeting
