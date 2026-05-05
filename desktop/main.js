@@ -1,4 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, Notification, globalShortcut } = require('electron');
+Menu.setApplicationMenu(null);
+
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -75,15 +77,43 @@ function createTray() {
   });
 }
 
+const CONFIG_PATH = path.join(app.getPath('userData'), 'window-state.json');
+
+function loadWindowState() {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    }
+  } catch (err) {
+    console.error('[main] Failed to load window state:', err);
+  }
+  return { width: 1280, height: 820 }; // Default size
+}
+
+function saveWindowState() {
+  if (!mainWindow) return;
+  try {
+    const bounds = mainWindow.getBounds();
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(bounds));
+  } catch (err) {
+    console.error('[main] Failed to save window state:', err);
+  }
+}
+
 function createWindow() {
+  const state = loadWindowState();
+
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    width: state.width,
+    height: state.height,
+    x: state.x,
+    y: state.y,
     minWidth: 900,
     minHeight: 600,
     title: 'Yolo',
     icon: path.join(__dirname, 'renderer', 'icon.png'),
-    backgroundColor: '#0f0f1a',
+    backgroundColor: '#121212',
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -94,6 +124,26 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+  
+  // Enable shortcuts since menu is hidden
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.key.toLowerCase() === 'r') {
+      mainWindow.reload();
+      event.preventDefault();
+    }
+    if (input.control && input.shift && input.key.toLowerCase() === 'i') {
+      mainWindow.webContents.openDevTools();
+      event.preventDefault();
+    }
+  });
+
+  // Save state on move or resize
+  mainWindow.on('resize', saveWindowState);
+  mainWindow.on('move', saveWindowState);
 
   mainWindow.on('closed', () => {
     mainWindow = null;

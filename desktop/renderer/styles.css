@@ -53,7 +53,7 @@
   --bg-chat: #121212;
   --bg-input: #121212;
   
-  --text-primary: #EAEAEA;
+  --text-primary: #FFFFFF;
   --text-secondary: #999999;
   --text-muted: #525252;
   
@@ -94,10 +94,11 @@ body {
 
 /* ══════════════ SIDEBAR (Conversation History) ══════════════ */
 #sidebar {
+  display: none;
   width: 260px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
-  display: flex; flex-direction: column;
+  flex-direction: column;
   flex-shrink: 0;
   z-index: 30;
 }
@@ -164,13 +165,13 @@ body {
 
 /* ── Connection Status ── */
 .status-bar {
-  top: 16px; min-width: 200px; justify-content: center;
+  top: 16px; min-width: 140px; justify-content: center;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   background: var(--glass-bg) !important;
   box-shadow: 0 8px 32px rgba(0,0,0,0.1) !important;
   animation: statusBarIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
-  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 8px;
   padding: 6px 12px; background: var(--bg-surface);
   border: 1px solid var(--border); border-radius: var(--radius-full);
@@ -205,7 +206,10 @@ body {
 .chat-header-info { display: flex; flex-direction: column; flex: 1; min-width: 0; margin-left: 16px; }
 #chat-title { font-family: 'DM Sans', sans-serif; font-size: 16px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
 #chat-subtitle {
-  font-family: 'JetBrains Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.6; font-size: 12px; color: var(--text-secondary); }
+  font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; opacity: 1; color: var(--text-primary); }
+[data-theme="dark"] #chat-subtitle { color: #ffffff; text-shadow: 0 0 10px rgba(255,255,255,0.3); }
+
+
 
 .chat-header-actions { display: flex; align-items: center; gap: 6px; }
 .icon-btn {
@@ -433,10 +437,9 @@ body {
   border: 1px solid var(--border); 
   border-radius: 32px; 
   padding: 8px 16px; 
-  transition: all 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); 
   position: relative;
   box-shadow: 0 12px 40px rgba(0,0,0,0.1);
-  width: 65%; /* Initially narrower */
+  width: 80%; 
   margin: 0 auto;
 }
 
@@ -447,11 +450,8 @@ body {
 
 .input-wrapper.floating-input:focus-within,
 .input-wrapper.floating-input.expanded { 
-  width: 82%; /* Reduced expansion width */
-  padding: 10px 18px;
   border-color: var(--text-primary); 
   box-shadow: 0 16px 48px rgba(0,0,0,0.15);
-  transform: translateY(-4px);
 }
 
 [data-theme="dark"] .input-wrapper.floating-input:focus-within,
@@ -1591,18 +1591,66 @@ body::before {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
 }
 
 .settings-sidebar-header {
-  padding: 24px 20px;
+  height: 64px;
+  padding: 0 24px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--text-primary);
+  justify-content: flex-start; /* Keep toggle button fixed on the left */
   border-bottom: 1px solid var(--border);
+  transition: all 0.3s ease;
+  box-sizing: border-box;
 }
+
+.settings-sidebar.collapsed {
+  width: 66px;
+}
+
+
+.settings-sidebar.collapsed .settings-sidebar-header {
+  padding: 0 24px;
+  justify-content: flex-start;
+}
+
+
+/* Rotate toggle button and clean up its look */
+.collapse-btn {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.collapse-btn:hover {
+  background: transparent !important;
+}
+
+.settings-sidebar.collapsed .collapse-btn {
+  transform: rotate(180deg);
+}
+
+
+.settings-sidebar.collapsed .settings-nav-item span {
+  display: none;
+}
+
+.settings-sidebar.collapsed .settings-nav-item {
+  width: 44px;
+}
+
+
+
+
+
 
 .settings-nav {
   flex: 1;
@@ -1613,20 +1661,41 @@ body::before {
 }
 
 .settings-nav-item {
+  height: 44px;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 0 12px;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   font-size: 13.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s, color 0.2s;
   text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
 }
+
+
+.nav-icon-wrapper {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+
+
+.settings-nav-item span {
+  transition: opacity 0.2s ease;
+}
+
 
 .settings-nav-item:hover {
   background: var(--bg-surface-hover);

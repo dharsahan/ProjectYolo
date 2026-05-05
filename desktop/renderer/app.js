@@ -107,6 +107,7 @@
     modeToggle: $('#mode-toggle'),
     statusBar: $('#status-bar'),
     statusText: $('#status-text'),
+    refreshBtn: $('#refresh-btn'),
     settingsBtn: $('#settings-btn'),
     settingsModal: $('#settings-modal'),
     closeSettings: $('#close-settings'),
@@ -139,6 +140,8 @@
     recordingTime: $('.recording-time'),
     attachMenu: $('#attach-menu'),
     stopBtn: $('#stop-btn'),
+    toggleSettingsSidebar: $('#toggle-settings-sidebar'),
+    settingsSidebar: $('.settings-sidebar'),
   };
 
   // ── Init ──
@@ -299,8 +302,7 @@
         label.textContent = state.yoloMode ? 'YOLO' : 'Safe';
         label.classList.toggle('yolo', state.yoloMode);
 
-        // Update title/subtitle
-        dom.chatTitle.textContent = `Session ${state.userId}`;
+        // Update subtitle (Session title removed as per request)
         const historyLen = data.history_length || 0;
         const totalTokens = data.total_tokens || 0;
         const llmCalls = data.llm_call_count || 0;
@@ -1060,6 +1062,10 @@
       const newMode = state.yoloMode ? 'safe' : 'yolo';
       sendMessage(`/mode ${newMode}`);
     });
+    
+    dom.refreshBtn.addEventListener('click', () => {
+      window.location.reload();
+    });
 
     dom.newChatBtn.addEventListener('click', () => {
       // Find a new unused user ID or just pick a high one
@@ -1331,6 +1337,14 @@
     dom.closeWorkers.addEventListener('click', () => {
       dom.workersPanel.classList.add('hidden');
     });
+
+    if (dom.toggleSettingsSidebar) {
+      dom.toggleSettingsSidebar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dom.settingsSidebar.classList.toggle('collapsed');
+      });
+    }
+
     dom.backToWorkers.addEventListener('click', () => {
       dom.workerChatView.classList.add('hidden');
       dom.workersListView.classList.remove('hidden');
