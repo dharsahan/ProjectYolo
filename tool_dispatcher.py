@@ -81,8 +81,8 @@ async def execute_tool_direct(
             if "session" in sig.parameters and "session" not in func_args:
                 func_args["session"] = session
             if "router" in sig.parameters and "router" not in func_args:
-                global router
-                func_args["router"] = router
+                import agent as _agent_mod
+                func_args["router"] = getattr(_agent_mod, "router", None)
             if "confirm_func" in sig.parameters and "confirm_func" not in func_args:
                 func_args["confirm_func"] = lambda a, t: True
 

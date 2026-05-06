@@ -53,8 +53,8 @@ def memory_delete(memory_id: str) -> str:
     """Delete a single memory by its unique ID."""
     try:
         memory = get_memory()
-        # OSS version uses memory_id as a positional or keyword argument
-        memory.delete(memory_id=memory_id)
+        # Use positional arg for cross-engine compatibility
+        memory.delete(memory_id)
         audit_log("memory_delete", {"memory_id": memory_id}, "success")
         return f"Memory `{memory_id}` has been deleted."
     except Exception as e:

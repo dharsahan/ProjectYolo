@@ -204,6 +204,16 @@ class TieredMemoryEngine:
             stats['L4_pattern_memory'] = cursor.fetchone()[0]
         return stats
 
+    def get_patterns(self, user_id: int, limit: int = 5) -> list:
+        """Public API: Return top L4 behavioral patterns for a user, ordered by confidence."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT pattern FROM L4_pattern_memory WHERE user_id = ? ORDER BY confidence DESC LIMIT ?",
+                (user_id, limit),
+            )
+            return [row['pattern'] for row in cursor.fetchall()]
+
     def get_all(self, filters: dict = None) -> list:
         uid = int(filters.get("user_id", 0)) if filters else 0
         with self._get_connection() as conn:
@@ -244,7 +254,8 @@ class TieredMemoryEngine:
                 try:
                     cursor.execute("""
                         SELECT rowid, fact, importance, created_at FROM L3_semantic_memory 
-                        WHERE user_id = ? AND L3_semantic_memory MATCH ?
+                        WHERE rowid IN (SELECT rowid FROM L3_semantic_memory WHERE user_id = ?)
+                          AND L3_semantic_memory MATCH ?
                     """, (uid, fts_query))
                     raw_results.extend([{"id": f"l3_{row['rowid']}", "memory": row['fact'], "importance": row['importance'] or 5.0, "created_at": row['created_at']} for row in cursor.fetchall()])
                 except sqlite3.OperationalError:

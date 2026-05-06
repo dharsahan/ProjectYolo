@@ -1,21 +1,30 @@
 from tools.artifact_ops import create_artifact, get_latest_artifact, list_artifacts
 from tools.background_ops import dispatch_parallel_agents, run_background_mission
-from tools.browser_ops import (
-    browser_click,
-    browser_click_at,
-    browser_close,
-    browser_crawl_step,
-    browser_click_next,
-    browser_extract_text,
-    browser_navigate,
-    browser_extract_links,
-    browser_press_key,
-    browser_screenshot,
-    browser_scroll,
-    browser_scroll_until_end,
-    browser_type,
-    browser_wait,
-)
+try:
+    from tools.browser_ops import (
+        browser_click,
+        browser_click_at,
+        browser_close,
+        browser_crawl_step,
+        browser_click_next,
+        browser_extract_text,
+        browser_navigate,
+        browser_extract_links,
+        browser_press_key,
+        browser_screenshot,
+        browser_scroll,
+        browser_scroll_until_end,
+        browser_type,
+        browser_wait,
+    )
+    _BROWSER_AVAILABLE = True
+except ImportError:
+    _BROWSER_AVAILABLE = False
+    browser_click = browser_click_at = browser_close = None
+    browser_crawl_step = browser_click_next = browser_extract_text = None
+    browser_navigate = browser_extract_links = browser_press_key = None
+    browser_screenshot = browser_scroll = browser_scroll_until_end = None
+    browser_type = browser_wait = None
 from tools.cron_ops import (
     cancel_scheduled_task,
     get_scheduled_tasks,
@@ -1587,3 +1596,13 @@ TOOLS_SCHEMAS = [
 # Append any dynamically loaded plugin schemas
 if PLUGIN_SCHEMAS:
     TOOLS_SCHEMAS.extend(PLUGIN_SCHEMAS)
+
+# Strip browser tool schemas if camoufox is not installed
+if not _BROWSER_AVAILABLE:
+    _BROWSER_TOOL_NAMES = {
+        "browser_navigate", "browser_click", "browser_click_at", "browser_close",
+        "browser_crawl_step", "browser_click_next", "browser_extract_text",
+        "browser_extract_links", "browser_press_key", "browser_screenshot",
+        "browser_scroll", "browser_scroll_until_end", "browser_type", "browser_wait",
+    }
+    TOOLS_SCHEMAS = [s for s in TOOLS_SCHEMAS if s.get("function", {}).get("name") not in _BROWSER_TOOL_NAMES]

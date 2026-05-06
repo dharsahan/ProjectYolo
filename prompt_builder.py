@@ -536,15 +536,12 @@ def _build_memory_context(
         if unique_relevant:
             sections.append("### [L3] Relevant Semantic Knowledge\n" + "\n".join(f"- {line}" for line in unique_relevant))
             
-        # 4. Behavioral Patterns (L4)
-        if hasattr(memory_service, '_get_connection'):
+        # 4. Behavioral Patterns (L4) — via public API
+        if hasattr(memory_service, 'get_patterns'):
             try:
-                with memory_service._get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT pattern FROM L4_pattern_memory WHERE user_id = ? ORDER BY confidence DESC LIMIT 5", (user_id,))
-                    patterns = [row['pattern'] for row in cursor.fetchall()]
-                    if patterns:
-                        sections.append("### [L4] Long-term Behavioral Patterns\n" + "\n".join(f"- {p}" for p in patterns))
+                patterns = memory_service.get_patterns(user_id, limit=5)
+                if patterns:
+                    sections.append("### [L4] Long-term Behavioral Patterns\n" + "\n".join(f"- {p}" for p in patterns))
             except Exception:
                 pass
             
