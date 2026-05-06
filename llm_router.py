@@ -11,6 +11,47 @@ try:
 except Exception:
     litellm_acompletion = None
 
+import time
+import asyncio
+
+class RateLimiter:
+    def __init__(self, rpm_limit: int):
+        self.rpm_limit = rpm_limit
+        self.period = 60.0
+        self.calls: list[float] = []
+        self._lock = asyncio.Lock()
+
+    async def wait(self):
+        if self.rpm_limit <= 0:
+            return
+        
+        async with self._lock:
+            now = time.time()
+            self.calls = [t for t in self.calls if now - t < self.period]
+            if len(self.calls) >= self.rpm_limit:
+                sleep_time = self.period - (now - self.calls[0])
+                if sleep_time > 0:
+                    import sys
+                    sys.stdout.write(f"\n[Rate Limit] Reached limit of {self.rpm_limit} requests/min. Pausing for {sleep_time:.1f}s to prevent exhaustion...\n")
+                    sys.stdout.flush()
+                    await asyncio.sleep(sleep_time)
+                self.calls = [t for t in self.calls if time.time() - t < self.period]
+                self.calls.append(time.time())
+            else:
+                self.calls.append(now)
+
+_GLOBAL_RATE_LIMITER: Optional[RateLimiter] = None
+
+def _get_rate_limiter() -> RateLimiter:
+    global _GLOBAL_RATE_LIMITER
+    if _GLOBAL_RATE_LIMITER is None:
+        try:
+            rpm = int(os.getenv("LLM_RPM_LIMIT", "40"))
+        except ValueError:
+            rpm = 40
+        _GLOBAL_RATE_LIMITER = RateLimiter(rpm_limit=rpm)
+    return _GLOBAL_RATE_LIMITER
+
 
 @dataclass
 class LLMConfig:
@@ -132,6 +173,8 @@ class LLMRouter:
         tool_choice: str = "auto",
         stream: bool = False,
     ) -> Any:
+        await _get_rate_limiter().wait()
+        
         if self.config.provider in {"openai", "openrouter", "compatible"}:
             if not self._openai_client:
                 raise RuntimeError("OpenAI-compatible client is not initialized")

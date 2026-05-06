@@ -10,7 +10,8 @@ from pathlib import Path
 from tools.base import YOLO_HOME
 
 VERBOSE = os.getenv("VERBOSE", "false").lower() == "true"
-PROMPTS_DIR = Path(__file__).resolve().parent / "configs" / "prompts"
+_LOCAL_PROMPTS_DIR = Path(__file__).resolve().parent / "configs" / "prompts"
+PROMPTS_DIR = (YOLO_HOME / "prompts") if (YOLO_HOME / "prompts").is_dir() else _LOCAL_PROMPTS_DIR
 _REPO_HAS_TESTS_CACHE: Optional[bool] = None
 AUTO_FACTS_START = "[AUTO_BASIC_FACTS]"
 AUTO_FACTS_END = "[/AUTO_BASIC_FACTS]"

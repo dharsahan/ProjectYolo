@@ -11,7 +11,7 @@ from typing import Optional
 
 import telegram.error
 from colorama import Fore, Style, init
-from dotenv import load_dotenv
+from tools.settings import load_settings
 
 # Silence PTB DeprecationWarning by opting into future behavior
 os.environ.setdefault("PTB_TIMEDELTA", "true")
@@ -36,7 +36,7 @@ from session import SessionManager
 init(autoreset=True)
 
 # Load configuration
-load_dotenv()
+load_settings()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ALLOWED_USER_IDS = [

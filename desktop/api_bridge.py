@@ -24,9 +24,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from dotenv import load_dotenv  # noqa: E402
+from tools.settings import load_settings
 
-load_dotenv(PROJECT_ROOT / ".env")
+load_settings()
 
 from aiohttp import web  # noqa: E402
 
@@ -717,13 +717,10 @@ async def handle_transcribe(request: web.Request) -> web.Response:
         return web.json_response({"error": str(exc)}, status=500)
 
 async def handle_update_env(request: web.Request) -> web.Response:
-    """POST /config/env — Update LLM provider settings in .env"""
+    """POST /config/env — Update LLM provider settings in settings.json"""
     try:
-        from dotenv import set_key
+        from tools.settings import update_setting
         data = await request.json()
-        env_path = PROJECT_ROOT / ".env"
-        if not env_path.exists():
-            env_path.touch()
             
         allowed_keys = {
             "LLM_PROVIDER", "MODEL_NAME", "LLM_MODEL", 
@@ -735,8 +732,7 @@ async def handle_update_env(request: web.Request) -> web.Response:
         
         for k, v in data.items():
             if k in allowed_keys:
-                set_key(str(env_path), k, str(v))
-                os.environ[k] = str(v)
+                update_setting(k, str(v))
         
         yolo_agent.reload_router()
         return web.json_response({"status": "success", "message": "Settings saved and LLM router reloaded"})

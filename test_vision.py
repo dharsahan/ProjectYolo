@@ -1,11 +1,11 @@
 import os
 import asyncio
 from openai import AsyncOpenAI
-from dotenv import load_dotenv
+from tools.settings import load_settings
 from pathlib import Path
 
 async def test_vision():
-    load_dotenv(Path(__file__).parent / ".env")
+    load_settings()
     
     api_key = os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")

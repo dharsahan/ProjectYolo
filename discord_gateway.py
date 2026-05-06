@@ -3,12 +3,12 @@ import logging
 import os
 
 import discord
-from dotenv import load_dotenv
+from tools.settings import load_settings
 
 import agent
 from session import SessionManager
 
-load_dotenv()
+load_settings()
 
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 VERBOSE = os.getenv("VERBOSE", "false").lower() == "true"

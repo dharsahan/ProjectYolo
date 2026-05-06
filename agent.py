@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from colorama import Fore, init
-from dotenv import load_dotenv
+from tools.settings import load_settings
 
 import tools
+from tools.base import YOLO_HOME
 from llm_router import LLMRouter, load_llm_config
 from session import Session
 from tool_dispatcher import execute_tool_direct, sanitize_history
@@ -50,7 +51,7 @@ class TUIMessage:
     DONE = "__DONE__"
 
 init(autoreset=True)
-load_dotenv()
+load_settings()
 
 VERBOSE = os.getenv("VERBOSE", "false").lower() == "true"
 
@@ -68,7 +69,8 @@ def reload_router():
     global router
     router = _get_router()
 AUTO_COMPACT_THRESHOLD = int(os.getenv("AUTO_COMPACT_THRESHOLD", "40"))
-PROMPTS_DIR = Path(__file__).resolve().parent / "configs" / "prompts"
+_LOCAL_PROMPTS_DIR = Path(__file__).resolve().parent / "configs" / "prompts"
+PROMPTS_DIR = (YOLO_HOME / "prompts") if (YOLO_HOME / "prompts").is_dir() else _LOCAL_PROMPTS_DIR
 
 async def run_agent_turn(
     user_msg: Optional[str],

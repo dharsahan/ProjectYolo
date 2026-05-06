@@ -17,12 +17,12 @@ except ImportError:  # pragma: no cover - non-Unix platforms
     from typing import Any
     fcntl: Any = None  # type: ignore[no-redef]
 
-from dotenv import load_dotenv
+from tools.settings import load_settings
 
 from tools.base import audit_log, resolve_and_verify_path
 
 # Ensure env is loaded for settings
-load_dotenv()
+load_settings()
 
 
 def _get_int_env(name: str, default: int, min_value: int = 1) -> int:
