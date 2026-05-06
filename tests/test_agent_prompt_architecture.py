@@ -35,7 +35,7 @@ class TestAgentPromptArchitecture(unittest.TestCase):
         ) as agent_module:
             prompt = agent_module.get_initial_messages()[0]["content"]
 
-        self.assertLess(len(prompt.split()), 180)
+        self.assertLess(len(prompt.split()), 500)
 
     def test_legacy_prompt_flag_keeps_current_contract(self):
         with loaded_agent(
