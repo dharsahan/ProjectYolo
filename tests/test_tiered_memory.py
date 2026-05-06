@@ -59,3 +59,22 @@ def test_mem0_interface(tmp_path):
     # Test delete_all
     engine.delete_all("1")
     assert len(engine.get_all(filters={"user_id": "1"})) == 0
+
+def test_get_recent_summary(tmp_path):
+    from tools.yolo_memory import TieredMemoryEngine
+    db_path = tmp_path / "test_memory.db"
+    engine = TieredMemoryEngine(db_path=db_path)
+    
+    # Add a semantic fact
+    engine.add("My favorite color is blue.", "1", category="preference")
+    engine.consolidate_memories(1)
+
+    # Add an episodic memory (will stay in L2 until next consolidation)
+    engine.add("I had a great day today.", "1")
+    
+    summary = engine.get_recent_summary(user_id=1, limit=5)
+    
+    # Should only contain the semantic memory (L3/L4), not the L2 blob
+    assert len(summary) == 1
+    assert "blue" in summary[0]["memory"]
+

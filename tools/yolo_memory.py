@@ -214,6 +214,36 @@ class TieredMemoryEngine:
             )
             return [row['pattern'] for row in cursor.fetchall()]
 
+    def get_recent_summary(self, user_id: int, limit: int = 10) -> list:
+        """Returns the most recent L3 (semantic) and L4 (pattern) memories, ignoring raw L2 events."""
+        uid = int(user_id)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Fetch from L3
+            cursor.execute("""
+                SELECT rowid, fact, created_at FROM L3_semantic_memory 
+                WHERE user_id = ? 
+                ORDER BY created_at DESC LIMIT ?
+            """, (uid, limit))
+            l3_memories = [{"id": f"l3_{row['rowid']}", "memory": row['fact'], "created_at": row['created_at']} for row in cursor.fetchall()]
+            
+            # Fetch from L4
+            cursor.execute("""
+                SELECT id, pattern, created_at FROM L4_pattern_memory 
+                WHERE user_id = ? 
+                ORDER BY created_at DESC LIMIT ?
+            """, (uid, limit))
+            l4_memories = [{"id": f"l4_{row['id']}", "memory": row['pattern'], "created_at": row['created_at']} for row in cursor.fetchall()]
+            
+            combined = l3_memories + l4_memories
+            
+            # Sort by created_at descending
+            combined.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+            
+            # Return top N
+            return combined[:limit]
+
     def get_all(self, filters: dict = None) -> list:
         uid = int(filters.get("user_id", 0)) if filters else 0
         with self._get_connection() as conn:
