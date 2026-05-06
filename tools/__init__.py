@@ -158,6 +158,7 @@ __all__ = [
     "research_get_all_summaries",
     "research_clear",
     "memory_list",
+    "memory_search",
     "memory_wipe",
     "memory_add",
     "memory_delete",
@@ -582,8 +583,28 @@ TOOLS_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "memory_list",
-            "description": "Show long-term memories.",
-            "parameters": {"type": "object", "properties": {}},
+            "description": "Get a high-level summary of stored memory counts and the 10 most recent facts. Does NOT return all memories.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_search",
+            "description": "Semantic search the permanent memory database for a specific keyword or question.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query, e.g., 'What is my name?' or 'TypeScript'",
+                    }
+                },
+                "required": ["query"],
+            },
         },
     },
     {

@@ -387,7 +387,8 @@ body {
 }
 
 .messages {
-  padding: 40px max(24px, calc(50vw - 420px)) 140px; /* Increased bottom padding for floating bar clearance */
+  padding: 40px max(24px, calc(50vw - 420px)) 140px;
+  /* Increased bottom padding for floating bar clearance */
   display: flex;
   flex-direction: column;
   gap: 32px;
@@ -516,6 +517,7 @@ body {
     opacity: 0;
     transform: translateY(15px) scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -570,14 +572,14 @@ body {
   position: relative;
   overflow-wrap: break-word;
   word-break: break-word;
-  box-shadow: 
+  box-shadow:
     0 4px 6px -1px rgba(0, 0, 0, 0.05),
     0 10px 15px -3px rgba(0, 0, 0, 0.05);
   transition: box-shadow 0.3s ease;
 }
 
 .message:hover .msg-content {
-  box-shadow: 
+  box-shadow:
     0 10px 15px -3px rgba(0, 0, 0, 0.1),
     0 20px 25px -5px rgba(0, 0, 0, 0.1);
 }
@@ -602,7 +604,7 @@ body {
 
 [data-theme="dark"] .msg-content {
   border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 
+  box-shadow:
     0 10px 20px rgba(0, 0, 0, 0.2),
     inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
@@ -712,7 +714,7 @@ body {
 .msg-content td {
   padding: 8px 12px;
   border: 1px solid var(--border);
-  
+
   text-align: left;
 }
 
@@ -774,15 +776,18 @@ body {
   background: transparent;
   border-top: none;
   z-index: 10;
-  position: absolute; /* Floating over messages */
+  position: absolute;
+  /* Floating over messages */
   bottom: 0;
   left: 0;
   right: 0;
-  pointer-events: none; /* Allow scrolling through padding */
+  pointer-events: none;
+  /* Allow scrolling through padding */
 }
 
 .input-wrapper.floating-input {
-  pointer-events: auto; /* Re-enable pointer events for the bar */
+  pointer-events: auto;
+  /* Re-enable pointer events for the bar */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -790,16 +795,18 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(0, 0, 0, 0.05);
-  border-radius: 16px; /* Reverted from pill shape */
-  padding: 6px;
+  border-radius: 16px;
+  /* Reverted from pill shape */
+  padding: 5px;
   position: relative;
-  box-shadow: 
+  box-shadow:
     0 4px 6px -1px rgba(0, 0, 0, 0.05),
     0 10px 20px -5px rgba(0, 0, 0, 0.1),
     0 20px 40px -10px rgba(0, 0, 0, 0.15);
   width: 80%;
   margin: 0 auto;
-  transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); /* Enhanced elastic transition for expansion */
+  transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Enhanced elastic transition for expansion */
   will-change: transform, box-shadow, width;
   transform: translateZ(0);
   -webkit-font-smoothing: subpixel-antialiased;
@@ -812,6 +819,7 @@ body {
     opacity: 0;
     transform: translateY(20px) translateZ(0);
   }
+
   to {
     width: 80%;
     opacity: 1;
@@ -822,24 +830,25 @@ body {
 [data-theme="dark"] .input-wrapper.floating-input {
   background: rgba(37, 37, 37, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 
+  box-shadow:
     0 4px 6px -1px rgba(0, 0, 0, 0.2),
     0 10px 25px -5px rgba(0, 0, 0, 0.3),
     0 25px 50px -12px rgba(0, 0, 0, 0.4);
 }
 
 .input-wrapper.floating-input:focus-within {
-  transform: translateY(-4px); 
-  width: 82%; /* Subtle expansion on focus */
+  transform: translateY(-4px);
+  width: 82%;
+  /* Subtle expansion on focus */
   border-color: rgba(var(--text-primary-rgb, 0, 0, 0), 0.3);
-  box-shadow: 
+  box-shadow:
     0 0 0 6px rgba(var(--text-primary-rgb, 0, 0, 0), 0.04),
     0 25px 70px -15px rgba(0, 0, 0, 0.3);
 }
 
 [data-theme="dark"] .input-wrapper.floating-input:focus-within {
   border-color: rgba(255, 255, 255, 0.3);
-  box-shadow: 
+  box-shadow:
     0 0 0 6px rgba(255, 255, 255, 0.04),
     0 25px 70px -15px rgba(0, 0, 0, 0.6);
 }
@@ -861,12 +870,12 @@ body {
 }
 
 .input-icon-btn {
-  width: 44px;
-  height: 44px;
+  width: 35px;
+  height: 35px;
   border: none;
   background: #A8A39D;
   color: #000000;
-  border-radius: 14px;
+  border-radius: 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -912,7 +921,8 @@ body {
   font-family: inherit;
   font-size: 15px;
   line-height: 1.5;
-  padding: 10px 0; /* Increased padding for better vertical centering */
+  padding: 10px 0;
+  /* Increased padding for better vertical centering */
   resize: none;
   max-height: 200px;
   overflow-y: auto;
@@ -937,11 +947,11 @@ body {
 
 .custom-send-btn {
   will-change: transform, background-color;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
+  width: 35px;
+  height: 35px;
+  min-width: 35px;
   border: none;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #A8A39D;
   color: #000000;
   cursor: pointer;
@@ -1831,9 +1841,11 @@ body::before {
     opacity: 0;
     transform: translateY(20px) scale(0.9);
   }
+
   70% {
     transform: translateY(-2px) scale(1.05);
   }
+
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -1841,8 +1853,8 @@ body::before {
 }
 
 /* --- Icon-only entrance animations (Staggered) --- */
-#attach-btn, 
-.input-actions-right > button {
+#attach-btn,
+.input-actions-right>button {
   opacity: 0;
   animation: textbarSlideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -1851,15 +1863,15 @@ body::before {
   animation-delay: 0.1s;
 }
 
-.input-actions-right > button:nth-child(1) {
+.input-actions-right>button:nth-child(1) {
   animation-delay: 0.2s;
 }
 
-.input-actions-right > button:nth-child(2) {
+.input-actions-right>button:nth-child(2) {
   animation-delay: 0.3s;
 }
 
-.input-actions-right > button:nth-child(3) {
+.input-actions-right>button:nth-child(3) {
   animation-delay: 0.4s;
 }
 
@@ -2260,10 +2272,11 @@ body::before {
   flex-direction: column;
   justify-content: center;
   min-width: 0;
-  background: rgba(0, 0, 0, 0.05); /* Subtler inset background */
+  background: rgba(0, 0, 0, 0.05);
+  /* Subtler inset background */
   border-radius: 12px;
-  padding: 0 20px;
-  min-height: 44px;
+  padding: 0 16px;
+  min-height: 40px;
   transition: background 0.3s ease;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
