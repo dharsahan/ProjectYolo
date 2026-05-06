@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, Notification, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, Notification, globalShortcut, shell } = require('electron');
 Menu.setApplicationMenu(null);
 
 const path = require('path');
@@ -388,6 +388,17 @@ ipcMain.handle('update-mcp-servers', async (_event, payload) => {
   } catch (err) {
     return { error: err.message };
   }
+});
+
+ipcMain.handle('open-external', async (_event, url) => {
+  await shell.openExternal(url);
+  return { ok: true };
+});
+
+ipcMain.handle('open-path', async (_event, filePath) => {
+  const err = await shell.openPath(filePath);
+  if (err) return { error: err };
+  return { ok: true };
 });
 
 // ── App lifecycle ──

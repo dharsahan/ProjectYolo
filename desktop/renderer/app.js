@@ -22,6 +22,27 @@
     bridgePort: 8790, // Default fallback
   };
 
+  // ── Helpers ──
+  function getFullUrl(url) {
+    if (!url) return '';
+    if (url.startsWith('/') && !url.startsWith('//')) {
+      return `http://127.0.0.1:${state.bridgePort}${url}`;
+    }
+    return url;
+  }
+
+  window.openLink = (url) => {
+    if (!url) return;
+    const fullUrl = getFullUrl(url);
+    if (fullUrl.startsWith('file://')) {
+      // For local files, use openPath for better compatibility
+      const filePath = fullUrl.replace('file://', '');
+      window.yoloAPI.openPath(decodeURIComponent(filePath));
+    } else {
+      window.yoloAPI.openExternal(fullUrl);
+    }
+  };
+
   // State to hold the current widget payload
   window.activeWidgetData = null;
 
@@ -808,7 +829,19 @@
               
               const resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
               placeholder.className = 'tool-result-content';
-              placeholder.innerHTML = `<strong>Result:</strong><pre><code>${escapeHtml(resultText)}</code></pre>`;
+              
+              let highlightedResult;
+              if (typeof hljs !== 'undefined') {
+                try {
+                  highlightedResult = hljs.highlightAuto(resultText).value;
+                } catch (e) {
+                  highlightedResult = escapeHtml(resultText);
+                }
+              } else {
+                highlightedResult = escapeHtml(resultText);
+              }
+              
+              placeholder.innerHTML = `<strong>Result:</strong><pre><code class="hljs">${highlightedResult}</code></pre>`;
             }
             scrollToBottom();
           } else if (type === 'artifact') {
@@ -818,11 +851,12 @@
             // For file:// URLs, we might need to handle them differently depending on Electron security
             // If served via /artifacts/ prefix, it works normally.
             if (data.type === 'image') {
+              const fullImgUrl = getFullUrl(data.url);
               artifactWrapper.innerHTML = `
                 <div class="artifact-title">Generated Image: ${data.name}</div>
-                <img src="${data.url}" class="artifact-image" alt="${data.name}" style="max-width: 100%; border-radius: 8px; margin-top: 8px; cursor: pointer;" onclick="window.open('${data.url}')" />
+                <img src="${fullImgUrl}" class="artifact-image" alt="${data.name}" style="max-width: 100%; border-radius: 8px; margin-top: 8px; cursor: pointer;" onclick="openLink('${data.url}')" />
                 <div class="artifact-actions" style="margin-top: 8px;">
-                  <button class="primary-btn sm" onclick="window.open('${data.url}')">View Full Size</button>
+                  <button class="primary-btn sm" onclick="openLink('${data.url}')">View Full Size</button>
                 </div>
               `;
             } else {
@@ -833,7 +867,7 @@
                    <span style="font-family: monospace; font-size: 0.9em;">${data.name}</span>
                 </div>
                 <div class="artifact-actions" style="margin-top: 8px;">
-                  <button class="primary-btn sm" onclick="window.open('${data.url}')">Open File</button>
+                  <button class="primary-btn sm" onclick="openLink('${data.url}')">Open File</button>
                 </div>
               `;
             }
@@ -1138,6 +1172,38 @@
         const newFiles = await Promise.all(filesToProcess.map(processFile));
         state.selectedFiles = [...state.selectedFiles, ...newFiles];
         renderAttachmentChips();
+        dom.sendBtn.disabled = false;
+        
+        if (typeof Motion !== 'undefined') {
+          Motion.animate(dom.attachmentChips, { scale: [0.95, 1], opacity: [0.8, 1] }, { duration: 0.2 });
+        }
+      }
+    });
+
+    // ── Drag & Drop Support ──
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dom.inputWrapper.classList.add('drag-over');
+    });
+
+    window.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dom.inputWrapper.classList.remove('drag-over');
+    });
+
+    window.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dom.inputWrapper.classList.remove('drag-over');
+      
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const files = Array.from(e.dataTransfer.files);
+        const newFiles = await Promise.all(files.map(processFile));
+        state.selectedFiles = [...state.selectedFiles, ...newFiles];
+        renderAttachmentChips();
+        dom.input.focus();
         dom.sendBtn.disabled = false;
         
         if (typeof Motion !== 'undefined') {
@@ -1650,18 +1716,28 @@
           if (lang === 'widget') {
             try {
               const data = JSON.parse(codeText);
-              // Call the new global render function
               if (typeof renderActiveWidget === 'function') {
                 renderActiveWidget(data);
               }
-              // Return a placeholder for the chat history
               return `<div class="widget-placeholder"><em>[Interactive Widget Expanded]</em></div>`;
             } catch (e) {
               console.error("Failed to parse widget JSON:", e);
-              // Fallback to normal rendering if JSON is invalid
             }
           }
-          return originalCodeRenderer(tokenOrCode, language, isEscaped);
+
+          if (typeof hljs !== 'undefined') {
+            try {
+              const validLang = (lang && hljs.getLanguage(lang)) ? lang : null;
+              const highlighted = validLang 
+                ? hljs.highlight(codeText, { language: validLang }).value 
+                : hljs.highlightAuto(codeText).value;
+              return `<pre><code class="hljs ${validLang ? 'language-' + validLang : ''}">${highlighted}</code></pre>`;
+            } catch (e) {
+              console.error("Highlight.js failed:", e);
+            }
+          }
+
+          return `<pre><code class="${lang ? 'language-' + lang : ''}">${escapeHtml(codeText)}</code></pre>`;
         };
 
         marked.setOptions({ breaks: true, gfm: true, renderer: renderer });

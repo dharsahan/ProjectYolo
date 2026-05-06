@@ -13,6 +13,7 @@ except Exception:
 
 import time
 import asyncio
+import random
 
 class RateLimiter:
     def __init__(self, rpm_limit: int):
@@ -39,7 +40,6 @@ class RateLimiter:
                 self.calls.append(time.time())
             else:
                 self.calls.append(now)
-
 _GLOBAL_RATE_LIMITER: Optional[RateLimiter] = None
 
 def _get_rate_limiter() -> RateLimiter:
@@ -59,6 +59,23 @@ class LLMConfig:
     model: str
     api_key: Optional[str]
     base_url: Optional[str]
+
+    def supports_vision(self) -> bool:
+        """Check if the configured model natively supports vision."""
+        m = self.model.lower()
+        # Common vision-capable models
+        vision_keywords = [
+            "gpt-4", "gpt-4o", "gpt-4-vision", "claude", "gemini", "pixtral", 
+            "llava", "moondream", "qwen-vl", "vision"
+        ]
+        return any(k in m for k in vision_keywords)
+
+    def supports_audio(self) -> bool:
+        """Check if the configured model natively supports audio input."""
+        m = self.model.lower()
+        # Common audio-capable models (native, not just whisper)
+        audio_keywords = ["gpt-4o", "gemini-1.5", "audio"]
+        return any(k in m for k in audio_keywords)
 
 
 def _default_model(provider: str) -> str:
@@ -141,8 +158,6 @@ class LLMRouter:
         tool_choice: str = "auto",
         stream: bool = False,
     ) -> Any:
-        import asyncio
-        import random
         max_retries = 3
         
         for attempt in range(max_retries):

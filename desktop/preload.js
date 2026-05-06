@@ -27,4 +27,6 @@ contextBridge.exposeInMainWorld('yoloAPI', {
   getBridgePort: () => ipcRenderer.invoke('get-bridge-port'),
   getMcpServers: () => ipcRenderer.invoke('get-mcp-servers'),
   updateMcpServers: (payload) => ipcRenderer.invoke('update-mcp-servers', payload),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  openPath: (path) => ipcRenderer.invoke('open-path', path),
 });

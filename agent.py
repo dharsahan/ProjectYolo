@@ -73,7 +73,7 @@ _LOCAL_PROMPTS_DIR = Path(__file__).resolve().parent / "configs" / "prompts"
 PROMPTS_DIR = (YOLO_HOME / "prompts") if (YOLO_HOME / "prompts").is_dir() else _LOCAL_PROMPTS_DIR
 
 async def run_agent_turn(
-    user_msg: Optional[str],
+    user_msg: Optional[Any],
     session: Session,
     signal_handler: Optional[Callable] = None,
     memory_service: Any = None,

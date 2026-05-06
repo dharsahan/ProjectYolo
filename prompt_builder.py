@@ -23,6 +23,19 @@ LEGACY_APPENDIX_END = "[/LEGACY_SYSTEM_APPENDIX]"
 
 _PROMPT_TEMPLATE_CACHE: Dict[str, tuple[str, float]] = {}
 
+def _get_text_content(content: Any) -> str:
+    """Extract string text from potentially multi-modal message content."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        # Multi-modal list: [{"type": "text", "text": "..."}, {"type": "image_url", ...}]
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                parts.append(item.get("text", ""))
+        return " ".join(parts).strip()
+    return ""
+
 
 def _is_small_model_name(model_name: str) -> bool:
     match = re.search(r"(\d+(?:\.\d+)?)b", (model_name or "").lower())
@@ -280,9 +293,9 @@ def _matches_intent(msg: str, triggers: list, negations: list = None) -> bool:
             return True
     return False
 
-def _is_complex_task_prompt(user_msg: str) -> bool:
-    msg = (user_msg or "").lower()
-    if not msg:
+def _is_complex_task_prompt(user_msg: Any) -> bool:
+    text = _get_text_content(user_msg).lower()
+    if not text:
         return False
 
     multi_step_markers = ["1.", "2.", "first", "second", "then", "after that"]
@@ -292,38 +305,41 @@ def _is_complex_task_prompt(user_msg: str) -> bool:
         "deploy", "production", "comprehensive", "deep"
     ]
 
-    if _matches_intent(msg, complex_keywords):
+    if _matches_intent(text, complex_keywords):
         return True
-    if sum(1 for m in multi_step_markers if m in msg) >= 2:
+    if sum(1 for m in multi_step_markers if m in text) >= 2:
         return True
-    if len(msg.split()) >= 40:
+    if len(text.split()) >= 40:
         return True
     return False
 
-def _is_gui_interaction_request(user_msg: str) -> bool:
+def _is_gui_interaction_request(user_msg: Any) -> bool:
     """Detect if the user wants to interact with the GUI / screen."""
+    text = _get_text_content(user_msg)
     triggers = [
         "screen", "click", "mouse", "gui", "desktop", "window", 
         "screenshot", "type in", "open app", "open application", 
         "what's on", "what is on", "look at", "see my", "scroll", 
         "keyboard", "press", "menu", "button", "display", "monitor", "cursor"
     ]
-    return _matches_intent(user_msg, triggers)
+    return _matches_intent(text, triggers)
 
-def _is_self_upgrade_request(user_msg: str) -> bool:
+def _is_self_upgrade_request(user_msg: Any) -> bool:
+    text = _get_text_content(user_msg)
     triggers = [
         "new feature for yourself", "new feature for itself", "improve yourself", 
         "upgrade yourself", "self-improving", "add capability to yourself", 
         "write new feature for yourself", "write new feature for itself"
     ]
-    return _matches_intent(user_msg, triggers)
+    return _matches_intent(text, triggers)
 
-def _is_experience_update_request(user_msg: str) -> bool:
+def _is_experience_update_request(user_msg: Any) -> bool:
+    text = _get_text_content(user_msg)
     triggers = [
         "update your experiences", "update experiences", "record this experience", 
         "learn from this", "remember this lesson", "add this to your experiences"
     ]
-    return _matches_intent(user_msg, triggers)
+    return _matches_intent(text, triggers)
 
 
 def _inject_system_directive(session: Session, directive: str) -> None:
@@ -492,11 +508,12 @@ def _sync_basic_facts_into_system_prompt(
 def _build_memory_context(
     memory_service: Any,
     user_id: int,
-    user_msg: str,
+    user_msg: Any,
     *,
     all_results: Any = None,
 ) -> Optional[str]:
-    if not memory_service or not user_msg:
+    text = _get_text_content(user_msg)
+    if not memory_service or not text:
         return None
 
     from tools.yolo_memory import TieredMemoryEngine
@@ -512,7 +529,7 @@ def _build_memory_context(
         # 2. Core Identity (L3 - High Importance)
         # Search relevant
         try:
-            search_results = memory_service.search(user_msg, filters={"user_id": str(user_id)}, limit=10)
+            search_results = memory_service.search(text, filters={"user_id": str(user_id)}, limit=10)
         except Exception:
             search_results = []
             
@@ -731,16 +748,17 @@ class PendingConfirmationError(Exception):
         super().__init__(f"Pending confirmation for {action}")
 
 
-def log_agent(user_id: int, tag: str, message: str, color: str = Fore.CYAN):
+def log_agent(user_id: int, tag: str, message: Any, color: str = Fore.CYAN):
+    text = _get_text_content(message)
     if VERBOSE:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         print(
-            f"{Fore.WHITE}[{user_id}] [{ts}] {color}{Style.BRIGHT}{tag}{Style.NORMAL} {message}"
+            f"{Fore.WHITE}[{user_id}] [{ts}] {color}{Style.BRIGHT}{tag}{Style.NORMAL} {text}"
         )
     
     # Also log to audit file for TUI visibility
     from tools.base import audit_log
-    audit_log("agent", {"user_id": user_id}, tag, message)
+    audit_log("agent", {"user_id": user_id}, tag, text)
 
 
 LEGACY_BASE_SYSTEM_PROMPT = (

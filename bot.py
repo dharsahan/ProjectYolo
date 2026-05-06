@@ -7,7 +7,7 @@ import sys
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import telegram.error
 from colorama import Fore, Style, init
@@ -62,18 +62,6 @@ def _get_int_env(name: str, default: int, min_value: int = 1) -> int:
 
 
 MAX_TELEGRAM_UPLOAD_BYTES = _get_int_env("MAX_TELEGRAM_UPLOAD_BYTES", 25 * 1024 * 1024)
-MAX_MEDIA_AI_BYTES = _get_int_env("MAX_MEDIA_AI_BYTES", 15 * 1024 * 1024)
-ENABLE_MEDIA_AI_PIPELINE = (
-    os.getenv("ENABLE_MEDIA_AI_PIPELINE", "true").lower() == "true"
-)
-VISION_MODEL_NAME = os.getenv(
-    "VISION_MODEL_NAME", os.getenv("MODEL_NAME", "gpt-4o-mini")
-)
-TRANSCRIPTION_MODEL_NAME = os.getenv(
-    "TRANSCRIPTION_MODEL_NAME", "gpt-4o-mini-transcribe"
-)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
 TELEGRAM_USE_WEBHOOK = os.getenv("TELEGRAM_USE_WEBHOOK", "false").lower() == "true"
 TELEGRAM_WEBHOOK_LISTEN = os.getenv("TELEGRAM_WEBHOOK_LISTEN", "0.0.0.0")
@@ -85,12 +73,8 @@ TELEGRAM_WEBHOOK_URL_BASE = os.getenv("TELEGRAM_WEBHOOK_URL", "").strip()
 TELEGRAM_WEBHOOK_SECRET_TOKEN = os.getenv("TELEGRAM_WEBHOOK_SECRET_TOKEN", "").strip()
 
 MEDIA_AI_CLIENT: Optional[AsyncOpenAI] = None
-if ENABLE_MEDIA_AI_PIPELINE and (OPENAI_API_KEY or OPENAI_BASE_URL != "https://api.openai.com/v1"):
-    MEDIA_AI_CLIENT = AsyncOpenAI(
-        api_key=OPENAI_API_KEY or "not-required",
-        base_url=OPENAI_BASE_URL,
-        timeout=90.0,
-    )
+# Legacy fallbacks removed. Only native multi-modality is supported.
+
 
 if not TOKEN:
     print(Fore.RED + "[ERROR] TELEGRAM_BOT_TOKEN is not set in .env.")
@@ -234,96 +218,60 @@ def guess_file_extension(
     return default_ext
 
 
-async def maybe_extract_image_text(
-    image_path: Path, mime_type: Optional[str]
-) -> Optional[str]:
-    if MEDIA_AI_CLIENT is None:
-        return None
-    if not image_path.exists():
-        return None
-    if image_path.stat().st_size > MAX_MEDIA_AI_BYTES:
-        return None
-
-    effective_mime = (
-        mime_type or mimetypes.guess_type(str(image_path))[0] or "image/jpeg"
-    )
+async def prepare_native_multi_modal(
+    caption: str, media_path: Path, media_type: str, original_name: str
+) -> Any:
+    """Prepare a native multi-modal message part list if model supports it."""
+    from llm_router import load_llm_config
+    config = load_llm_config()
     
-    # OpenAI Vision support: jpeg, png, webp, gif. 
-    # Some proxies (like Copilot) are even stricter.
-    supported_types = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
-    if effective_mime not in supported_types:
-        # Fallback: most images can be parsed as jpeg by the model if they are image-like.
-        # If it's something really weird (e.g. image/svg+xml), the model will just fail to parse,
-        # but we avoid the 400 'invalid media type' error from the API gateway.
-        effective_mime = "image/jpeg"
-
+    native_vision = config.supports_vision()
+    native_audio = config.supports_audio()
+    
+    parts = []
+    if caption:
+        parts.append({"type": "text", "text": caption})
+    
+    import base64
     try:
-        # Performance: read file off the event loop. Photos can be many MB and
-        # base64-encoding plus disk I/O on the loop blocks all other coroutines.
-        image_bytes = await asyncio.to_thread(image_path.read_bytes)
-        b64 = await asyncio.to_thread(
-            lambda: base64.b64encode(image_bytes).decode("ascii")
-        )
-        response = await MEDIA_AI_CLIENT.chat.completions.create(
-            model=VISION_MODEL_NAME,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": (
-                                "Extract as much visible text as possible (OCR) and then give a concise "
-                                "description of the image. Keep the output plain text."
-                            ),
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{effective_mime};base64,{b64}",
-                            },
-                        },
-                    ],
-                }
-            ],
-            temperature=0,
-        )
-        if not response.choices:
-            return None
-        text = response.choices[0].message.content or ""
-        return text.strip() or None
-    except Exception:
-        logger.exception("Image OCR/extraction failed")
-        return None
+        data = media_path.read_bytes()
+        b64 = base64.b64encode(data).decode("utf-8")
+        
+        if media_type.startswith("image/"):
+            if native_vision:
+                parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{media_type};base64,{b64}"}
+                })
+            else:
+                parts.append({"type": "text", "text": f"\n\n[Omitted Image: {original_name}. Native vision not supported by current model.]"})
+        elif media_type.startswith("audio/"):
+            if native_audio:
+                fmt = media_type.split("/")[1]
+                if fmt == "oga": fmt = "ogg" # Telegram voice notes
+                parts.append({
+                    "type": "input_audio",
+                    "input_audio": {"data": b64, "format": fmt}
+                })
+            else:
+                parts.append({"type": "text", "text": f"\n\n[Omitted Audio: {original_name}. Native audio not supported by current model.]"})
+        else:
+            if len(data) < 50000:
+                try:
+                    text_content = data.decode("utf-8")
+                    parts.append({"type": "text", "text": f"\n\nFile `{original_name}` content:\n{text_content}"})
+                except Exception:
+                    parts.append({"type": "text", "text": f"\n\n[Omitted File: {original_name}. Binary type {media_type}]"})
+            else:
+                parts.append({"type": "text", "text": f"\n\n[Omitted File: {original_name}. Too large for direct text context.]"})
+                
+    except Exception as e:
+        parts.append({"type": "text", "text": f"\n\n[Error reading attachment {original_name}: {e}]"})
 
+    if len(parts) == 1 and parts[0]["type"] == "text":
+        return parts[0]["text"]
+    return parts
 
-async def maybe_transcribe_audio(audio_path: Path) -> Optional[str]:
-    if MEDIA_AI_CLIENT is None:
-        return None
-    if not audio_path.exists():
-        return None
-    if audio_path.stat().st_size > MAX_MEDIA_AI_BYTES:
-        return None
-
-    try:
-        # Performance: offload disk read so the event loop stays responsive
-        # while the audio file (potentially many MB) is loaded.
-        audio_bytes = await asyncio.to_thread(audio_path.read_bytes)
-        stream = BytesIO(audio_bytes)
-        stream.name = audio_path.name
-        transcription = await MEDIA_AI_CLIENT.audio.transcriptions.create(
-            model=TRANSCRIPTION_MODEL_NAME,
-            file=stream,
-        )
-
-        text = getattr(transcription, "text", None)
-        if text is None:
-            text = str(transcription)
-        text = text.strip()
-        return text or None
-    except Exception:
-        logger.exception("Audio transcription failed")
-        return None
 
 
 async def process_uploaded_artifact(
@@ -335,8 +283,6 @@ async def process_uploaded_artifact(
     original_name: str,
     file_size: int,
     caption: str,
-    extracted_text: Optional[str] = None,
-    extracted_label: Optional[str] = None,
 ) -> None:
     relative_path = os.path.relpath(local_path, os.getcwd())
     assert update.effective_user is not None
@@ -345,45 +291,15 @@ async def process_uploaded_artifact(
         user_id, "UPLOAD", f"Saved `{relative_path}` ({file_size} bytes)", Fore.GREEN
     )
 
-    extracted_path = None
-    if extracted_text and extracted_label:
-        sidecar_suffix = ".ocr.txt" if extracted_label == "OCR" else ".transcript.txt"
-        extracted_path = write_text_sidecar(local_path, sidecar_suffix, extracted_text)
+    mime_type = mimetypes.guess_type(str(local_path))[0] or "application/octet-stream"
+    user_msg = await prepare_native_multi_modal(caption, local_path, mime_type, original_name)
+    await process_agent_turn(update, context, user_msg)
 
-    if caption:
-        prompt_parts = [
-            f"The user uploaded a `{media_kind}` file at `{relative_path}`.",
-            f"Original filename: `{original_name}`.",
-            f"File size: `{file_size}` bytes.",
-        ]
-        if extracted_text and extracted_label:
-            prompt_parts.append(f"Auto-generated {extracted_label} is available.")
-            if extracted_path:
-                prompt_parts.append(
-                    f"{extracted_label} saved to: `{os.path.relpath(extracted_path, os.getcwd())}`."
-                )
-            prompt_parts.append(f"{extracted_label} preview:\n{extracted_text[:1200]}")
-        prompt_parts.append(f"User instruction: {caption}")
-        await process_agent_turn(update, context, "\n\n".join(prompt_parts))
-        return
 
-    reply_lines = [
-        "Upload saved successfully.",
-        f"Type: {media_kind}",
-        f"Path: {relative_path}",
-    ]
-    if extracted_text and extracted_label:
-        if extracted_path:
-            reply_lines.append(
-                f"{extracted_label} file: {os.path.relpath(extracted_path, os.getcwd())}"
-            )
-        preview = extracted_text[:600]
-        reply_lines.append(f"{extracted_label} preview: {preview}")
-    reply_lines.append(
-        "Send a follow-up instruction (example: summarize, extract action items, compare with another file)."
-    )
+    # Acknowledgement
     assert update.message is not None
-    await update.message.reply_text("\n".join(reply_lines))
+    await update.message.reply_text(f"✅ Upload processed: `{original_name}`")
+
 
 
 async def auth_check(update: Update) -> bool:
@@ -419,8 +335,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "*Usage Guide*\n\n"
         "Simply send me instructions in plain English\\. Use `/mode yolo` for full autonomy\\.\n\n"
-        "You can upload files directly in Telegram \\(optionally with a caption instruction\\) and I will save them to `artifacts/uploads`\\.\n\n"
-        "Supported uploads: documents, photos \\(with OCR\\), audio/voice \\(with transcript when AI pipeline is enabled\\)\\.\n\n"
+        "You can upload files directly in Telegram (optionally with a caption instruction) and I will save them to `artifacts/uploads`.\n\n"
+        "Supported uploads: documents, photos, audio/voice notes. Multi-modal processing is native to the agent.\n\n"
         "*Commands:*\n"
         "• `/experiences`: Technical lessons learned\n"
         "• `/schedules`: Recurring background tasks\n"
@@ -509,7 +425,6 @@ async def handle_photo_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(f"Failed to save uploaded photo: {e}")
         return
 
-    extracted_text = await maybe_extract_image_text(local_path, "image/jpeg")
     caption = (update.message.caption or "").strip()
     await process_uploaded_artifact(
         update,
@@ -519,8 +434,6 @@ async def handle_photo_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         original_name=local_path.name,
         file_size=file_size,
         caption=caption,
-        extracted_text=extracted_text,
-        extracted_label="OCR",
     )
     log_bot(
         user_id,
@@ -579,7 +492,6 @@ async def handle_audio_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(f"Failed to save uploaded {media_kind}: {e}")
         return
 
-    transcript = await maybe_transcribe_audio(local_path)
     caption = (update.message.caption or "").strip()
     await process_uploaded_artifact(
         update,
@@ -589,8 +501,6 @@ async def handle_audio_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         original_name=file_name or local_path.name,
         file_size=file_size,
         caption=caption,
-        extracted_text=transcript,
-        extracted_label="Transcript",
     )
 
 
@@ -936,7 +846,7 @@ async def get_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def process_agent_turn(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, user_text: Optional[str]
+    update: Update, context: ContextTypes.DEFAULT_TYPE, user_msg: Any
 ):
     assert update.effective_user is not None
     user_id = update.effective_user.id
@@ -949,7 +859,7 @@ async def process_agent_turn(
 
         try:
             response = await agent.run_agent_turn(
-                user_text,
+                user_msg,
                 session,
                 signal_handler=telegram_signal_handler,
                 memory_service=session_manager.memory,
