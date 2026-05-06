@@ -436,7 +436,7 @@ body {
   background: var(--bg-surface); 
   border: 1px solid var(--border); 
   border-radius: 9999px; 
-  padding: 6px 8px; 
+  padding: 6px; 
   position: relative;
   box-shadow: 0 12px 40px rgba(0,0,0,0.1);
   width: 80%; 
@@ -472,12 +472,12 @@ body {
 }
 
 .input-icon-btn { 
-  width: 40px; 
-  height: 40px; 
+  width: 44px; 
+  height: 44px; 
   border: none; 
-  background: #a39e9a; 
+  background: #A8A39D; 
   color: #000000; 
-  border-radius: 12px; 
+  border-radius: 14px; 
   cursor: pointer; 
   display: flex; 
   align-items: center; 
@@ -536,12 +536,12 @@ body {
 
 .custom-send-btn {
   will-change: transform, background-color;
-  width: 40px; 
-  height: 40px; 
-  min-width: 40px; 
+  width: 44px; 
+  height: 44px; 
+  min-width: 44px; 
   border: none; 
-  border-radius: 12px;
-  background: #a39e9a; 
+  border-radius: 14px;
+  background: #A8A39D; 
   color: #000000; 
   cursor: pointer;
   display: flex; 
@@ -562,7 +562,7 @@ body {
 
 [data-theme="dark"] .custom-send-btn {
   will-change: transform, background-color;
-  background: #a39e9a; 
+  background: #A8A39D; 
   color: #000000;
 }
 
@@ -1397,12 +1397,12 @@ body::before {
   min-width: 0;
   background: var(--bg-primary);
   border-radius: 9999px;
-  padding: 0 16px;
-  height: 40px;
+  padding: 0 20px;
+  height: 44px;
 }
 
 [data-theme="dark"] .input-center-stack {
-  background: #404040;
+  background: #4A4A4A;
 }
 
 .input-wrapper.floating-input {
