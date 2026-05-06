@@ -503,16 +503,16 @@ def _build_memory_context(
     if isinstance(memory_service, TieredMemoryEngine):
         sections = []
         
-        # Working memory
+        # 1. Working Memory (L1) - Short-term context
         working_mem = memory_service.working_memory_get(user_id)
         if working_mem:
             wm_str = "\n".join(f"- {k}: {v}" for k,v in working_mem.items())
-            sections.append(f"## Working memory (current task)\n{wm_str}")
+            sections.append(f"### [L1] Working Memory (Active Task Context)\n{wm_str}")
             
-        # Long-term knowledge (L3 + L2)
+        # 2. Core Identity (L3 - High Importance)
         # Search relevant
         try:
-            search_results = memory_service.search(user_msg, filters={"user_id": str(user_id)}, limit=5)
+            search_results = memory_service.search(user_msg, filters={"user_id": str(user_id)}, limit=10)
         except Exception:
             search_results = []
             
@@ -523,17 +523,20 @@ def _build_memory_context(
             except Exception:
                 all_results = []
                 
-        all_lines = _extract_memory_lines(all_results, limit=40)
+        all_lines = _extract_memory_lines(all_results, limit=50)
         identity_hints = _derive_identity_hints(all_lines)
         
         if identity_hints:
-            sections.append("## Core identity\n" + "\n".join(f"- {h}" for h in identity_hints))
+            sections.append("### [L3] Core Identity & Preferences\n" + "\n".join(f"- {h}" for h in identity_hints))
             
-        relevant_lines = _extract_memory_lines(search_results, limit=6)
-        if relevant_lines:
-            sections.append("## Relevant knowledge\n" + "\n".join(f"- {line}" for line in relevant_lines))
+        # 3. Relevant Semantic Knowledge (L3 / L2)
+        relevant_lines = _extract_memory_lines(search_results, limit=10)
+        # Filter out lines already in identity hints
+        unique_relevant = [line for line in relevant_lines if line not in (identity_hints or [])]
+        if unique_relevant:
+            sections.append("### [L3] Relevant Semantic Knowledge\n" + "\n".join(f"- {line}" for line in unique_relevant))
             
-        # Behavioral Patterns (L4)
+        # 4. Behavioral Patterns (L4)
         if hasattr(memory_service, '_get_connection'):
             try:
                 with memory_service._get_connection() as conn:
@@ -541,12 +544,12 @@ def _build_memory_context(
                     cursor.execute("SELECT pattern FROM L4_pattern_memory WHERE user_id = ? ORDER BY confidence DESC LIMIT 5", (user_id,))
                     patterns = [row['pattern'] for row in cursor.fetchall()]
                     if patterns:
-                        sections.append("## Behavioural patterns\n" + "\n".join(f"- {p}" for p in patterns))
+                        sections.append("### [L4] Long-term Behavioral Patterns\n" + "\n".join(f"- {p}" for p in patterns))
             except Exception:
                 pass
             
         if sections:
-            return "[MEMORY_CONTEXT]\n" + "\n\n".join(sections) + "\n[/MEMORY_CONTEXT]"
+            return "[TIERED_MEMORY_CONTEXT]\n" + "\n\n".join(sections) + "\n[/TIERED_MEMORY_CONTEXT]"
         return None
 
     # Legacy mem0 logic

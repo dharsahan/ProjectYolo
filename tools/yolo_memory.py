@@ -82,7 +82,7 @@ class TieredMemoryEngine:
             cursor.execute("DELETE FROM L1_working_memory WHERE user_id = ?", (user_id,))
             conn.commit()
 
-    def _score_importance(self, text: str, category: str) -> float:
+    def _score_importance(self, text: str, category: str, boost: float = 0.0) -> float:
         # Simple heuristic hybrid scoring
         score = 5.0
         text_lower = text.lower().strip()
@@ -94,7 +94,7 @@ class TieredMemoryEngine:
         if len(text) < 5 and category not in ["identity", "preference"]:
             score -= 4.0
             
-        return min(max(score, 0.0), 10.0)
+        return min(max(score + boost, 0.0), 10.0)
 
     def add(self, fact, user_id: int = 0, category: str = "fact", **kwargs):
         import re
@@ -115,7 +115,13 @@ class TieredMemoryEngine:
         else:
             fact_str = str(fact)
             
-        importance = self._score_importance(fact_str, category)
+        # Explicit importance tagging
+        explicit_importance = kwargs.get("importance")
+        if explicit_importance is not None:
+            importance = float(explicit_importance)
+        else:
+            importance = self._score_importance(fact_str, category, boost=float(kwargs.get("importance_boost", 0.0)))
+
         if importance < 3.0:
             return  # Noise
             
@@ -143,29 +149,44 @@ class TieredMemoryEngine:
 
     def _consolidate_internal(self, cursor, user_id: int):
         import datetime
+        import re
         uid = int(user_id)
         cursor.execute("SELECT id, event, importance FROM L2_episodic_memory WHERE user_id = ?", (uid,))
         events = cursor.fetchall()
         now_str = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        
         for row in events:
             if row['importance'] >= 3.0:
-                # Prevent duplicates in L3
-                cursor.execute("SELECT rowid FROM L3_semantic_memory WHERE user_id = ? AND fact = ?", (uid, row['event']))
+                event_text = row['event']
+                
+                # Semantic Contradiction Detection (Simple Heuristic for now: Name check)
+                # Example: "My name is X" vs "My name is Y"
+                name_match = re.search(r"(?:my name is|i am)\s+([a-zA-Z\s]+)", event_text.lower())
+                if name_match:
+                    # Look for existing name facts in L3
+                    cursor.execute("SELECT rowid FROM L3_semantic_memory WHERE user_id = ? AND (fact LIKE '%my name is%' OR fact LIKE '%i am%')", (uid,))
+                    existing_conflict = cursor.fetchone()
+                    if existing_conflict:
+                        # Resolution: favour the newer one (delete the old one)
+                        cursor.execute("DELETE FROM L3_semantic_memory WHERE rowid = ?", (existing_conflict['rowid'],))
+
+                # Prevent exact duplicates in L3
+                cursor.execute("SELECT rowid FROM L3_semantic_memory WHERE user_id = ? AND fact = ?", (uid, event_text))
                 if not cursor.fetchone():
                     cursor.execute("""
                         INSERT INTO L3_semantic_memory (user_id, fact, category, importance, created_at, updated_at)
                         VALUES (?, ?, 'fact', ?, ?, ?)
-                    """, (uid, row['event'], row['importance'], now_str, now_str))
+                    """, (uid, event_text, row['importance'], now_str, now_str))
                     
                 # Infer patterns into L4
-                event_lower = row['event'].lower()
+                event_lower = event_text.lower()
                 if row['importance'] >= 6.0 and ("always" in event_lower or "never" in event_lower or "prefers" in event_lower):
-                    cursor.execute("SELECT id FROM L4_pattern_memory WHERE user_id = ? AND pattern = ?", (uid, row['event']))
+                    cursor.execute("SELECT id FROM L4_pattern_memory WHERE user_id = ? AND pattern = ?", (uid, event_text))
                     if not cursor.fetchone():
                         cursor.execute("""
                             INSERT INTO L4_pattern_memory (user_id, pattern, confidence)
                             VALUES (?, ?, ?)
-                        """, (uid, row['event'], row['importance']))
+                        """, (uid, event_text, row['importance']))
 
         cursor.execute("DELETE FROM L2_episodic_memory WHERE user_id = ?", (uid,))
 
