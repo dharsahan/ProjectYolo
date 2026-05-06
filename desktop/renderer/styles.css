@@ -2781,6 +2781,7 @@ body::before {
 
 .toggle-switch input:checked+label:before {
   transform: translateX(20px);
+  background-color: var(--bg-primary);
 }
 
 /* Theme Selector */
