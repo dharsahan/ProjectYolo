@@ -2,6 +2,10 @@
 
 Project Yolo is an elite, highly autonomous AI system controller and expert software engineer agent. It acts as an orchestrator capable of solving complex software engineering, research, and general desktop tasks end-to-end. Built with a decoupled LLM architecture, it primarily operates via a chat gateway (Telegram/Discord) but also supports CLI and standalone server modes.
 
+<center>
+<a href="https://deepwiki.com/dharsahan/ProjectYolo"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+</center>
+<br>
 ## Contributing
 
 Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) before submitting a PR.
