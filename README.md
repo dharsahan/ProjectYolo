@@ -44,10 +44,11 @@ Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md)
   - **Audio**: Upload audio/voice notes for instant transcription and analysis.
 
 - **LLM Agnostic (`llm_router.py`)**: Intercepts and routes calls seamlessly across LLM providers:
-  - OpenAI (`gpt-4o-mini`, `gpt-4o`)
-  - Anthropic (`claude-3-5-sonnet`)
+  - OpenAI (`gpt-5-mini`, `gpt-5.5`)
+  - Anthropic (`claude-4-6-sonnet`)
+  - Google(OPENAI) (`gemini-3.1-pro` , `gemini-3-flash`)
   - OpenRouter
-  - Local / OpenAI-compatible proxy endpoints (e.g., GitHub Copilot proxies).
+  - Local / OpenAI-compatible endpoints.
 
 - **Continuous Operation & Evolution**: 
   - **Memories**: Long-term persistent user context.
