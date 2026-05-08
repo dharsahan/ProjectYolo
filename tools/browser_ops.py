@@ -648,16 +648,25 @@ async def browser_start_screencast(ws: web.WebSocketResponse):
     import base64
     page = await _get_page()
     
+    # Event to trigger an immediate frame (e.g. after a click or keypress)
+    trigger_frame = asyncio.Event()
+    
     async def screencast_loop():
         try:
             while not ws.closed:
-                # Capture frame as JPEG
-                image_bytes = await page.screenshot(type="jpeg", quality=40)
+                # Capture frame as JPEG with lower quality for speed
+                image_bytes = await page.screenshot(type="jpeg", quality=30)
                 b64_data = base64.b64encode(image_bytes).decode("utf-8")
                 
-                await ws.send_json({"type": "frame", "data": b64_data})
-                # ~10 frames per second
-                await asyncio.sleep(0.1)
+                if not ws.closed:
+                    await ws.send_json({"type": "frame", "data": b64_data})
+                
+                # Wait for next frame: either 0.5s idle OR immediate trigger
+                try:
+                    await asyncio.wait_for(trigger_frame.wait(), timeout=0.5)
+                    trigger_frame.clear()
+                except asyncio.TimeoutError:
+                    pass
         except Exception as e:
             logger.error(f"Screencast loop error: {e}")
 
@@ -677,18 +686,24 @@ async def browser_start_screencast(ws: web.WebSocketResponse):
                         if "x" in data and "y" in data:
                             await page.mouse.move(data["x"], data["y"])
                         await page.mouse.down(button=data.get("button", "left"))
+                        trigger_frame.set()
                     elif ev_type == "mouseup":
                         if "x" in data and "y" in data:
                             await page.mouse.move(data["x"], data["y"])
                         await page.mouse.up(button=data.get("button", "left"))
+                        trigger_frame.set()
                     elif ev_type == "click":
                         await page.mouse.click(data["x"], data["y"], button=data.get("button", "left"))
+                        trigger_frame.set()
                     elif ev_type == "wheel":
                         await page.mouse.wheel(data["deltaX"], data["deltaY"])
+                        trigger_frame.set()
                     elif ev_type == "keydown":
                         await page.keyboard.down(data["key"])
+                        trigger_frame.set()
                     elif ev_type == "keyup":
                         await page.keyboard.up(data["key"])
+                        trigger_frame.set()
                 except Exception as inner_e:
                     logger.error(f"Error handling browser interaction: {inner_e}")
                     

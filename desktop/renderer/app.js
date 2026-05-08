@@ -992,7 +992,9 @@
     browserWs.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === 'frame') {
-        dom.browserImg.src = `data:image/jpeg;base64,${msg.data}`;
+        requestAnimationFrame(() => {
+          dom.browserImg.src = `data:image/jpeg;base64,${msg.data}`;
+        });
       }
     };
     
@@ -1014,6 +1016,9 @@
     dom.closeBrowserBtn.addEventListener('click', closeLiveBrowser);
 
     function getCoordinates(e) {
+      if (!dom.browserImg.naturalWidth || !dom.browserImg.naturalHeight) {
+        return { x: 0, y: 0 };
+      }
       const rect = dom.browserImg.getBoundingClientRect();
       const imgRatio = dom.browserImg.naturalWidth / dom.browserImg.naturalHeight;
       const boxRatio = rect.width / rect.height;
