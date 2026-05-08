@@ -997,6 +997,9 @@
         const value = btn.getAttribute('data-value');
         const widgetId = btn.getAttribute('data-widget-id');
         
+        // Force isLoading to false so the message isn't dropped if clicked immediately
+        state.isLoading = false;
+        
         // Send the response
         sendMessage(`[Widget Response: ${widgetId}] Selected: ${value}`);
         
@@ -1008,6 +1011,9 @@
 
         widget.classList.add('locked');
         const widgetId = inputEl.getAttribute('data-widget-id');
+        
+        // Force isLoading to false so the message isn't dropped if clicked immediately
+        state.isLoading = false;
         
         sendMessage(`[Widget Response: ${widgetId}] Custom: ${value}`);
         
@@ -1030,6 +1036,9 @@
 
         widget.classList.add('locked');
         const widgetId = inputEl.getAttribute('data-widget-id');
+        
+        // Force isLoading to false so the message isn't dropped if clicked immediately
+        state.isLoading = false;
         
         sendMessage(`[Widget Response: ${widgetId}] Custom: ${value}`);
         
