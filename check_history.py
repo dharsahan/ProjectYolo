@@ -1,4 +1,6 @@
-import sqlite3, json, os
+import sqlite3
+import json
+import os
 conn = sqlite3.connect(os.path.expanduser("~/.yolo/yolo_v2.db"))
 cursor = conn.cursor()
 cursor.execute("SELECT history FROM sessions ORDER BY last_active DESC LIMIT 1")

@@ -1,7 +1,9 @@
 from tools.registry import register_tool
+import aiohttp
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import random
 from pathlib import Path
@@ -10,6 +12,8 @@ from urllib.parse import urljoin, urlparse
 from camoufox.async_api import AsyncCamoufox
 
 from tools.base import YOLO_ARTIFACTS, YOLO_BROWSER_PROFILE, audit_log
+
+logger = logging.getLogger(__name__)
 
 # Persistent browser state
 _browser_context = None
@@ -633,3 +637,58 @@ async def browser_close() -> str:
         _browser_context = _browser_exit_stack = _page_instance = None
         audit_log("browser_close", {}, "success")
         return "Browser closed."
+
+
+async def browser_start_screencast(ws: aiohttp.web.WebSocketResponse):
+    """
+    Attach to the current browser page via CDP, start a screencast, 
+    stream frames to the WebSocket, and listen for interaction events.
+    """
+    page = await _get_page()
+    cdp = await page.context.new_cdp_session(page)
+    
+    async def handle_frame(event):
+        try:
+            # Acknowledge the frame so the browser sends the next one
+            await cdp.send("Page.screencastFrameAck", {"sessionId": event["sessionId"]})
+            # Send the base64 JPEG to the WebSocket
+            await ws.send_json({"type": "frame", "data": event["data"]})
+        except Exception as e:
+            logger.error(f"Screencast frame error: {e}")
+
+    cdp.on("Page.screencastFrame", handle_frame)
+    await cdp.send("Page.startScreencast", {"format": "jpeg", "quality": 50, "everyNthFrame": 1})
+    
+    try:
+        async for msg in ws:
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                data = json.loads(msg.data)
+                ev_type = data.get("type")
+                
+                try:
+                    if ev_type == "mousemove":
+                        await page.mouse.move(data["x"], data["y"])
+                    elif ev_type == "mousedown":
+                        await page.mouse.down(button=data.get("button", "left"))
+                    elif ev_type == "mouseup":
+                        await page.mouse.up(button=data.get("button", "left"))
+                    elif ev_type == "click":
+                        await page.mouse.click(data["x"], data["y"], button=data.get("button", "left"))
+                    elif ev_type == "wheel":
+                        await page.mouse.wheel(data["deltaX"], data["deltaY"])
+                    elif ev_type == "keydown":
+                        await page.keyboard.down(data["key"])
+                    elif ev_type == "keyup":
+                        await page.keyboard.up(data["key"])
+                except Exception as inner_e:
+                    logger.error(f"Error handling browser interaction: {inner_e}")
+                    
+            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                break
+    finally:
+        try:
+            await cdp.send("Page.stopScreencast")
+            await cdp.detach()
+        except Exception:
+            pass
+

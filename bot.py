@@ -5,7 +5,6 @@ import mimetypes
 import os
 import sys
 from datetime import datetime, timezone
-from io import BytesIO
 from pathlib import Path
 from typing import Any, Optional
 
@@ -232,7 +231,6 @@ async def prepare_native_multi_modal(
     if caption:
         parts.append({"type": "text", "text": caption})
     
-    import base64
     try:
         data = media_path.read_bytes()
         b64 = base64.b64encode(data).decode("utf-8")
@@ -713,7 +711,7 @@ async def experiences_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         from tools.experience_ops import list_experiences
 
-        result = list_experiences(user_id)
+        result = list_experiences(session_manager.resolve_id(user_id))
         await send_long_message((update.effective_chat.id if update.effective_chat else 0), result, context)
     except Exception as e:
         assert update.message is not None
@@ -748,7 +746,7 @@ async def memories_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         from tools.memory_ops import memory_list
 
-        result = memory_list(user_id)
+        result = memory_list(session_manager.resolve_id(user_id))
         await send_long_message((update.effective_chat.id if update.effective_chat else 0), result, context)
     except Exception as e:
         assert update.message is not None

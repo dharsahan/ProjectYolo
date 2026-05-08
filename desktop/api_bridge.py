@@ -17,7 +17,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # Ensure the project root is on the path so we can import agent/session/tools.
 # When imported from server.py, the CWD is already correct.
@@ -33,7 +33,6 @@ from aiohttp import web  # noqa: E402
 
 import agent as yolo_agent  # noqa: E402
 from session import SessionManager  # noqa: E402
-from openai import AsyncOpenAI  # noqa: E402
 import mimetypes  # noqa: E402
 
 # ── Shared state (same as bot.py) ──
@@ -448,23 +447,23 @@ async def handle_command(request: web.Request) -> web.Response:
 
             elif cmd == "experiences":
                 from tools.experience_ops import list_experiences
-                result = list_experiences(user_id)
+                result = list_experiences(session_manager.resolve_id(user_id))
 
             elif cmd == "schedules":
                 from tools.cron_ops import get_scheduled_tasks
-                result = get_scheduled_tasks(user_id)
+                result = get_scheduled_tasks(session_manager.resolve_id(user_id))
 
             elif cmd == "memories":
                 if args and args[0] == "--stats":
                     from tools.memory_ops import memory_stats
-                    result = memory_stats(user_id)
+                    result = memory_stats(session_manager.resolve_id(user_id))
                 else:
                     from tools.memory_ops import memory_list
-                    result = memory_list(user_id)
+                    result = memory_list(session_manager.resolve_id(user_id))
 
             elif cmd == "compact_memories":
                 from tools.memory_ops import consolidate_memories
-                result = consolidate_memories(user_id)
+                result = consolidate_memories(session_manager.resolve_id(user_id))
 
             elif cmd == "facts":
                 if session.message_history and session.message_history[0].get("role") == "system":
@@ -480,7 +479,7 @@ async def handle_command(request: web.Request) -> web.Response:
 
             elif cmd == "forget":
                 from tools.memory_ops import memory_wipe
-                result = memory_wipe(user_id)
+                result = memory_wipe(session_manager.resolve_id(user_id))
 
             elif cmd == "cancel":
                 if session.pending_confirmations:
