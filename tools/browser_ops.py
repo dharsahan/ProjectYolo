@@ -1,5 +1,6 @@
 from tools.registry import register_tool
 import aiohttp
+from aiohttp import web
 import asyncio
 import contextlib
 import json
@@ -639,7 +640,7 @@ async def browser_close() -> str:
         return "Browser closed."
 
 
-async def browser_start_screencast(ws: aiohttp.web.WebSocketResponse):
+async def browser_start_screencast(ws: web.WebSocketResponse):
     """
     Attach to the current browser page via CDP, start a screencast, 
     stream frames to the WebSocket, and listen for interaction events.
