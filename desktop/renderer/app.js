@@ -108,6 +108,10 @@
   // ── DOM refs ──
   const $ = (sel) => document.querySelector(sel);
   const dom = {
+    openBrowserBtn: $('#open-browser-btn'),
+    browserModal: $('#browser-modal'),
+    closeBrowserBtn: $('#close-browser-btn'),
+    browserImg: $('#browser-stream-img'),
     activeWidgetContainer: document.getElementById('active-widget-container'),
     inputWrapper: document.querySelector('.input-wrapper'),
     app: $('#app'),
@@ -978,8 +982,109 @@
     } catch {}
   }
 
+  let browserWs = null;
+
+  function openLiveBrowser() {
+    dom.browserModal.classList.remove('hidden');
+    const wsUrl = `ws://127.0.0.1:${state.bridgePort}/browser/stream`;
+    browserWs = new WebSocket(wsUrl);
+    
+    browserWs.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'frame') {
+        dom.browserImg.src = `data:image/jpeg;base64,${msg.data}`;
+      }
+    };
+    
+    browserWs.onerror = (err) => console.error("Browser WS Error", err);
+  }
+
+  function closeLiveBrowser() {
+    dom.browserModal.classList.add('hidden');
+    if (browserWs) {
+      browserWs.close();
+      browserWs = null;
+    }
+    dom.browserImg.src = '';
+  }
+
   // ── Events ──
   function bindEvents() {
+    dom.openBrowserBtn.addEventListener('click', openLiveBrowser);
+    dom.closeBrowserBtn.addEventListener('click', closeLiveBrowser);
+
+    function getCoordinates(e) {
+      const rect = dom.browserImg.getBoundingClientRect();
+      const imgRatio = dom.browserImg.naturalWidth / dom.browserImg.naturalHeight;
+      const boxRatio = rect.width / rect.height;
+      
+      let renderWidth, renderHeight, offsetX = 0, offsetY = 0;
+      
+      if (imgRatio > boxRatio) {
+        renderWidth = rect.width;
+        renderHeight = rect.width / imgRatio;
+        offsetY = (rect.height - renderHeight) / 2;
+      } else {
+        renderHeight = rect.height;
+        renderWidth = rect.height * imgRatio;
+        offsetX = (rect.width - renderWidth) / 2;
+      }
+
+      const x = (e.clientX - rect.left - offsetX) * (dom.browserImg.naturalWidth / renderWidth);
+      const y = (e.clientY - rect.top - offsetY) * (dom.browserImg.naturalHeight / renderHeight);
+      
+      return { x: Math.max(0, Math.min(x, dom.browserImg.naturalWidth)), y: Math.max(0, Math.min(y, dom.browserImg.naturalHeight)) };
+    }
+
+    const mapButton = (e) => {
+      if (e.button === 0) return 'left';
+      if (e.button === 1) return 'middle';
+      if (e.button === 2) return 'right';
+      return 'left';
+    };
+
+    dom.browserImg.addEventListener('mousemove', (e) => {
+      if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
+      const { x, y } = getCoordinates(e);
+      browserWs.send(JSON.stringify({ type: 'mousemove', x, y }));
+    });
+
+    dom.browserImg.addEventListener('mousedown', (e) => {
+      if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
+      e.preventDefault();
+      browserWs.send(JSON.stringify({ type: 'mousedown', button: mapButton(e) }));
+    });
+
+    dom.browserImg.addEventListener('mouseup', (e) => {
+      if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
+      e.preventDefault();
+      browserWs.send(JSON.stringify({ type: 'mouseup', button: mapButton(e) }));
+    });
+
+    dom.browserImg.addEventListener('wheel', (e) => {
+      if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
+      e.preventDefault();
+      browserWs.send(JSON.stringify({ type: 'wheel', deltaX: e.deltaX, deltaY: e.deltaY }));
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (!dom.browserModal.classList.contains('hidden') && browserWs && browserWs.readyState === WebSocket.OPEN) {
+        if (e.key === 'Escape') {
+          closeLiveBrowser();
+          return; 
+        }
+        e.preventDefault();
+        browserWs.send(JSON.stringify({ type: 'keydown', key: e.key }));
+      }
+    });
+
+    document.addEventListener('keyup', (e) => {
+      if (!dom.browserModal.classList.contains('hidden') && browserWs && browserWs.readyState === WebSocket.OPEN) {
+        e.preventDefault();
+        browserWs.send(JSON.stringify({ type: 'keyup', key: e.key }));
+      }
+    });
+
     // Update the click listener:
     dom.activeWidgetContainer.addEventListener('click', (e) => {
       const btn = e.target.closest('.widget-btn');
