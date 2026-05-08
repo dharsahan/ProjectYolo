@@ -1,4 +1,5 @@
 import asyncio
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import (
@@ -54,12 +55,19 @@ class SessionManager:
 
         self.memory = get_memory()
 
+    def resolve_id(self, user_id: int) -> int:
+        if os.getenv("YOLO_GLOBAL_MODE", "false").lower() == "true":
+            return 0
+        return user_id
+
     def get_lock(self, user_id: int) -> asyncio.Lock:
+        user_id = self.resolve_id(user_id)
         if user_id not in self.locks:
             self.locks[user_id] = asyncio.Lock()
         return self.locks[user_id]
 
     def get_or_create(self, user_id: int) -> Session:
+        user_id = self.resolve_id(user_id)
         if user_id not in self.sessions:
             # Try to load from DB first
             history, yolo_mode, think_mode, think_mode_policy, pending_confirmations = (
@@ -90,6 +98,7 @@ class SessionManager:
         hot path (multiple `save()` calls per turn from bot callbacks).
         Pass `force=True` to bypass the cache (e.g., on shutdown/expiry).
         """
+        user_id = self.resolve_id(user_id)
         if user_id not in self.sessions:
             return
         session = self.sessions[user_id]
@@ -125,6 +134,7 @@ class SessionManager:
         session.last_saved_signature = signature
 
     def clear(self, user_id: int):
+        user_id = self.resolve_id(user_id)
         if user_id in self.sessions:
             del self.sessions[user_id]
         if user_id in self.locks:
