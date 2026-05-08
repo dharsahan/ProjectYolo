@@ -1047,9 +1047,10 @@
     dom.browserImg.addEventListener('mousemove', (e) => {
       if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
       const now = Date.now();
-      if (now - lastMouseMove < 50) return; // Throttle to max ~20 FPS
+      if (now - lastMouseMove < 100) return; // Throttle to ~10 FPS for stability
       lastMouseMove = now;
       const { x, y } = getCoordinates(e);
+      if (isNaN(x) || isNaN(y)) return;
       browserWs.send(JSON.stringify({ type: 'mousemove', x, y }));
     });
 
@@ -1057,6 +1058,7 @@
       if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
       e.preventDefault();
       const { x, y } = getCoordinates(e);
+      if (isNaN(x) || isNaN(y)) return;
       browserWs.send(JSON.stringify({ type: 'mousedown', x, y, button: mapButton(e) }));
     });
 
@@ -1064,23 +1066,48 @@
       if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
       e.preventDefault();
       const { x, y } = getCoordinates(e);
+      if (isNaN(x) || isNaN(y)) return;
       browserWs.send(JSON.stringify({ type: 'mouseup', x, y, button: mapButton(e) }));
     });
 
-    dom.browserImg.addEventListener('click', (e) => {
-      if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
-      e.preventDefault();
-      const { x, y } = getCoordinates(e);
-      browserWs.send(JSON.stringify({ type: 'click', x, y, button: mapButton(e) }));
-    });
-
+    // Remove redundant click listener as mousedown/mouseup handles it in browser
+    
     dom.browserImg.addEventListener('wheel', (e) => {
       if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
       e.preventDefault();
       browserWs.send(JSON.stringify({ type: 'wheel', deltaX: e.deltaX, deltaY: e.deltaY }));
     });
 
-    document.addEventListener('keydown', (e) => {
+    // Use window-level delegation for widgets to bypass any container-level pointer issues
+    window.addEventListener('click', (e) => {
+      const btn = e.target.closest('.widget-btn');
+      const sendBtn = e.target.closest('.widget-custom-send-btn');
+      
+      const widget = e.target.closest('.dynamic-widget');
+      if (!widget || widget.classList.contains('locked')) return;
+
+      if (btn) {
+        widget.classList.add('locked');
+        btn.setAttribute('data-selected', 'true');
+        const value = btn.getAttribute('data-value');
+        const widgetId = btn.getAttribute('data-widget-id');
+        state.isLoading = false;
+        sendMessage(`[Widget Response: ${widgetId}] Selected: ${value}`);
+        setTimeout(() => clearActiveWidget(), 300);
+      } else if (sendBtn) {
+        const inputEl = widget.querySelector('.widget-custom-input');
+        const value = inputEl ? inputEl.value.trim() : '';
+        if (!value) return;
+        widget.classList.add('locked');
+        const widgetId = inputEl.getAttribute('data-widget-id');
+        state.isLoading = false;
+        sendMessage(`[Widget Response: ${widgetId}] Custom: ${value}`);
+        setTimeout(() => clearActiveWidget(), 300);
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      // 1. Browser Modal Keyboard Support
       if (!dom.browserModal.classList.contains('hidden') && browserWs && browserWs.readyState === WebSocket.OPEN) {
         if (e.key === 'Escape') {
           closeLiveBrowser();
@@ -1089,78 +1116,29 @@
         e.preventDefault();
         browserWs.send(JSON.stringify({ type: 'keydown', key: e.key }));
       }
+      
+      // 2. Dynamic Widget Keyboard Support (Enter to Send)
+      if (e.key === 'Enter') {
+        const inputEl = e.target.closest('.widget-custom-input');
+        if (inputEl) {
+          e.preventDefault();
+          const value = inputEl.value.trim();
+          if (!value) return;
+          const widget = inputEl.closest('.dynamic-widget');
+          if (!widget || widget.classList.contains('locked')) return;
+          widget.classList.add('locked');
+          const widgetId = inputEl.getAttribute('data-widget-id');
+          state.isLoading = false;
+          sendMessage(`[Widget Response: ${widgetId}] Custom: ${value}`);
+          setTimeout(() => clearActiveWidget(), 300);
+        }
+      }
     });
 
-    document.addEventListener('keyup', (e) => {
+    window.addEventListener('keyup', (e) => {
       if (!dom.browserModal.classList.contains('hidden') && browserWs && browserWs.readyState === WebSocket.OPEN) {
         e.preventDefault();
         browserWs.send(JSON.stringify({ type: 'keyup', key: e.key }));
-      }
-    });
-
-    // Update the click listener:
-    dom.activeWidgetContainer.addEventListener('click', (e) => {
-      const btn = e.target.closest('.widget-btn');
-      const sendBtn = e.target.closest('.widget-custom-send-btn');
-      
-      const widget = e.target.closest('.dynamic-widget');
-      if (!widget || widget.classList.contains('locked')) return;
-
-      if (btn) {
-        // Lock the widget visually
-        widget.classList.add('locked');
-        btn.setAttribute('data-selected', 'true');
-
-        // Extract value
-        const value = btn.getAttribute('data-value');
-        const widgetId = btn.getAttribute('data-widget-id');
-        
-        // Force isLoading to false so the message isn't dropped if clicked immediately
-        state.isLoading = false;
-        
-        // Send the response
-        sendMessage(`[Widget Response: ${widgetId}] Selected: ${value}`);
-        
-        setTimeout(() => clearActiveWidget(), 300);
-      } else if (sendBtn) {
-        const inputEl = widget.querySelector('.widget-custom-input');
-        const value = inputEl ? inputEl.value.trim() : '';
-        if (!value) return;
-
-        widget.classList.add('locked');
-        const widgetId = inputEl.getAttribute('data-widget-id');
-        
-        // Force isLoading to false so the message isn't dropped if clicked immediately
-        state.isLoading = false;
-        
-        sendMessage(`[Widget Response: ${widgetId}] Custom: ${value}`);
-        
-        setTimeout(() => clearActiveWidget(), 300);
-      }
-    });
-
-    // Add keydown listener for Enter key:
-    dom.activeWidgetContainer.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        const inputEl = e.target.closest('.widget-custom-input');
-        if (!inputEl) return;
-        
-        e.preventDefault();
-        const value = inputEl.value.trim();
-        if (!value) return;
-
-        const widget = inputEl.closest('.dynamic-widget');
-        if (!widget || widget.classList.contains('locked')) return;
-
-        widget.classList.add('locked');
-        const widgetId = inputEl.getAttribute('data-widget-id');
-        
-        // Force isLoading to false so the message isn't dropped if clicked immediately
-        state.isLoading = false;
-        
-        sendMessage(`[Widget Response: ${widgetId}] Custom: ${value}`);
-        
-        setTimeout(() => clearActiveWidget(), 300);
       }
     });
     dom.sendBtn.addEventListener('click', () => {
