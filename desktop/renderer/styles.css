@@ -2960,8 +2960,8 @@ body::before {
 
 /* --- Dynamic Widgets --- */
 .dynamic-widget {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
   margin: 12px 0;
@@ -2982,7 +2982,7 @@ body::before {
 
 .dynamic-widget .widget-btn {
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   color: var(--text-primary);
   padding: 12px 16px;
   border-radius: 8px;
@@ -2992,7 +2992,7 @@ body::before {
 }
 
 .dynamic-widget .widget-btn:hover {
-  background: var(--bg-hover);
+  background: var(--bg-surface-hover);
   border-color: var(--text-muted);
 }
 
@@ -3010,11 +3010,12 @@ body::before {
 /* --- Textbar-Anchored Widget --- */
 #active-widget-container {
   width: 100%;
+  pointer-events: auto;
 }
 
 .textbar-widget {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 20px;
   margin: 0;
@@ -3046,7 +3047,7 @@ body::before {
   display: flex;
   align-items: center;
   background: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 12px;
   margin-top: 8px;
