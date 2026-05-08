@@ -642,23 +642,27 @@ async def browser_close() -> str:
 
 async def browser_start_screencast(ws: web.WebSocketResponse):
     """
-    Attach to the current browser page via CDP, start a screencast, 
+    Start a screencast by polling screenshots, 
     stream frames to the WebSocket, and listen for interaction events.
     """
+    import base64
     page = await _get_page()
-    cdp = await page.context.new_cdp_session(page)
     
-    async def handle_frame(event):
+    async def screencast_loop():
         try:
-            # Acknowledge the frame so the browser sends the next one
-            await cdp.send("Page.screencastFrameAck", {"sessionId": event["sessionId"]})
-            # Send the base64 JPEG to the WebSocket
-            await ws.send_json({"type": "frame", "data": event["data"]})
+            while not ws.closed:
+                # Capture frame as JPEG
+                image_bytes = await page.screenshot(type="jpeg", quality=40)
+                b64_data = base64.b64encode(image_bytes).decode("utf-8")
+                
+                await ws.send_json({"type": "frame", "data": b64_data})
+                # ~10 frames per second
+                await asyncio.sleep(0.1)
         except Exception as e:
-            logger.error(f"Screencast frame error: {e}")
+            logger.error(f"Screencast loop error: {e}")
 
-    cdp.on("Page.screencastFrame", handle_frame)
-    await cdp.send("Page.startScreencast", {"format": "jpeg", "quality": 50, "everyNthFrame": 1})
+    # Start the screenshot loop in the background
+    cast_task = asyncio.create_task(screencast_loop())
     
     try:
         async for msg in ws:
@@ -687,9 +691,9 @@ async def browser_start_screencast(ws: web.WebSocketResponse):
             elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                 break
     finally:
+        cast_task.cancel()
         try:
-            await cdp.send("Page.stopScreencast")
-            await cdp.detach()
-        except Exception:
+            await cast_task
+        except asyncio.CancelledError:
             pass
 
