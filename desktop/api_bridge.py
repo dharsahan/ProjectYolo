@@ -705,6 +705,22 @@ async def handle_post_mcp_servers(request: web.Request) -> web.Response:
         return web.json_response({"error": str(exc)}, status=500)
 
 
+async def handle_browser_stream(request: web.Request) -> web.WebSocketResponse:
+    """WebSocket endpoint for live browser streaming."""
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    
+    from tools.browser_ops import browser_start_screencast
+    
+    try:
+        await browser_start_screencast(ws)
+    except Exception as e:
+        import logging
+        logging.error(f"Browser stream error: {e}")
+        
+    return ws
+
+
 # ── App setup ──
 
 def create_app() -> web.Application:
@@ -717,6 +733,7 @@ def create_app() -> web.Application:
     app.router.add_post("/config/env", handle_update_env)
     app.router.add_get("/mcp/servers", handle_get_mcp_servers)
     app.router.add_post("/mcp/servers", handle_post_mcp_servers)
+    app.router.add_get("/browser/stream", handle_browser_stream)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/session", handle_session_info)
     app.router.add_get("/sessions", handle_get_sessions)
