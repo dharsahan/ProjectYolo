@@ -1,10 +1,7 @@
 from tools.registry import register_tool
-import aiohttp
-from aiohttp import web
 import asyncio
 import contextlib
 import json
-import logging
 import os
 import random
 from pathlib import Path
@@ -13,8 +10,6 @@ from urllib.parse import urljoin, urlparse
 from camoufox.async_api import AsyncCamoufox
 
 from tools.base import YOLO_ARTIFACTS, YOLO_BROWSER_PROFILE, audit_log
-
-logger = logging.getLogger(__name__)
 
 # Persistent browser state
 _browser_context = None
@@ -638,81 +633,3 @@ async def browser_close() -> str:
         _browser_context = _browser_exit_stack = _page_instance = None
         audit_log("browser_close", {}, "success")
         return "Browser closed."
-
-
-async def browser_start_screencast(ws: web.WebSocketResponse):
-    """
-    Start a screencast by polling screenshots, 
-    stream frames to the WebSocket, and listen for interaction events.
-    """
-    import base64
-    page = await _get_page()
-    
-    # Event to trigger an immediate frame (e.g. after a click or keypress)
-    trigger_frame = asyncio.Event()
-    
-    async def screencast_loop():
-        try:
-            while not ws.closed:
-                # Capture frame as JPEG with lower quality for speed
-                image_bytes = await page.screenshot(type="jpeg", quality=30)
-                b64_data = base64.b64encode(image_bytes).decode("utf-8")
-                
-                if not ws.closed:
-                    await ws.send_json({"type": "frame", "data": b64_data})
-                
-                # Wait for next frame: either 0.5s idle OR immediate trigger
-                try:
-                    await asyncio.wait_for(trigger_frame.wait(), timeout=0.5)
-                    trigger_frame.clear()
-                except asyncio.TimeoutError:
-                    pass
-        except Exception as e:
-            logger.error(f"Screencast loop error: {e}")
-
-    # Start the screenshot loop in the background
-    cast_task = asyncio.create_task(screencast_loop())
-    
-    try:
-        async for msg in ws:
-            if msg.type == aiohttp.WSMsgType.TEXT:
-                data = json.loads(msg.data)
-                ev_type = data.get("type")
-                
-                try:
-                    if ev_type == "mousemove":
-                        await page.mouse.move(data["x"], data["y"])
-                    elif ev_type == "mousedown":
-                        if "x" in data and "y" in data:
-                            await page.mouse.move(data["x"], data["y"])
-                        await page.mouse.down(button=data.get("button", "left"))
-                        trigger_frame.set()
-                    elif ev_type == "mouseup":
-                        if "x" in data and "y" in data:
-                            await page.mouse.move(data["x"], data["y"])
-                        await page.mouse.up(button=data.get("button", "left"))
-                        trigger_frame.set()
-                    elif ev_type == "click":
-                        await page.mouse.click(data["x"], data["y"], button=data.get("button", "left"))
-                        trigger_frame.set()
-                    elif ev_type == "wheel":
-                        await page.mouse.wheel(data["deltaX"], data["deltaY"])
-                        trigger_frame.set()
-                    elif ev_type == "keydown":
-                        await page.keyboard.down(data["key"])
-                        trigger_frame.set()
-                    elif ev_type == "keyup":
-                        await page.keyboard.up(data["key"])
-                        trigger_frame.set()
-                except Exception as inner_e:
-                    logger.error(f"Error handling browser interaction: {inner_e}")
-                    
-            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                break
-    finally:
-        cast_task.cancel()
-        try:
-            await cast_task
-        except asyncio.CancelledError:
-            pass
-

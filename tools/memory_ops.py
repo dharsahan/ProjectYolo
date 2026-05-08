@@ -9,7 +9,7 @@ def memory_list(user_id: int) -> str:
     try:
         memory = get_memory()
         
-        if hasattr(memory, "memory_stats"):
+        if isinstance(memory, TieredMemoryEngine):
             stats = memory.memory_stats(user_id)
             recent = memory.get_recent_summary(user_id, limit=10)
             
@@ -47,9 +47,6 @@ def memory_list(user_id: int) -> str:
                 else:
                     text = str(m)
                     mem_id = "unknown"
-                # Hard truncate to avoid token blowups
-                if len(text) > 200:
-                    text = text[:200] + "... [TRUNCATED]"
                 output += f"- `{mem_id}`: {text}\n"
 
             output += "\n*Note: Use `memory_search` to query for specific keywords.*"

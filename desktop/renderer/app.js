@@ -108,10 +108,6 @@
   // ── DOM refs ──
   const $ = (sel) => document.querySelector(sel);
   const dom = {
-    openBrowserBtn: $('#open-browser-btn'),
-    browserModal: $('#browser-modal'),
-    closeBrowserBtn: $('#close-browser-btn'),
-    browserImg: $('#browser-stream-img'),
     activeWidgetContainer: document.getElementById('active-widget-container'),
     inputWrapper: document.querySelector('.input-wrapper'),
     app: $('#app'),
@@ -982,109 +978,10 @@
     } catch {}
   }
 
-  let browserWs = null;
-
-  function openLiveBrowser() {
-    dom.browserModal.classList.remove('hidden');
-    const wsUrl = `ws://127.0.0.1:${state.bridgePort}/browser/stream`;
-    browserWs = new WebSocket(wsUrl);
-    
-    browserWs.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'frame') {
-        requestAnimationFrame(() => {
-          dom.browserImg.src = `data:image/jpeg;base64,${msg.data}`;
-        });
-      }
-    };
-    
-    browserWs.onerror = (err) => console.error("Browser WS Error", err);
-  }
-
-  function closeLiveBrowser() {
-    dom.browserModal.classList.add('hidden');
-    if (browserWs) {
-      browserWs.close();
-      browserWs = null;
-    }
-    dom.browserImg.src = '';
-  }
-
   // ── Events ──
   function bindEvents() {
-    dom.openBrowserBtn.addEventListener('click', openLiveBrowser);
-    dom.closeBrowserBtn.addEventListener('click', closeLiveBrowser);
-
-    function getCoordinates(e) {
-      if (!dom.browserImg.naturalWidth || !dom.browserImg.naturalHeight) {
-        return { x: 0, y: 0 };
-      }
-      const rect = dom.browserImg.getBoundingClientRect();
-      const imgRatio = dom.browserImg.naturalWidth / dom.browserImg.naturalHeight;
-      const boxRatio = rect.width / rect.height;
-      
-      let renderWidth, renderHeight, offsetX = 0, offsetY = 0;
-      
-      if (imgRatio > boxRatio) {
-        renderWidth = rect.width;
-        renderHeight = rect.width / imgRatio;
-        offsetY = (rect.height - renderHeight) / 2;
-      } else {
-        renderHeight = rect.height;
-        renderWidth = rect.height * imgRatio;
-        offsetX = (rect.width - renderWidth) / 2;
-      }
-
-      const x = (e.clientX - rect.left - offsetX) * (dom.browserImg.naturalWidth / renderWidth);
-      const y = (e.clientY - rect.top - offsetY) * (dom.browserImg.naturalHeight / renderHeight);
-      
-      return { x: Math.max(0, Math.min(x, dom.browserImg.naturalWidth)), y: Math.max(0, Math.min(y, dom.browserImg.naturalHeight)) };
-    }
-
-    const mapButton = (e) => {
-      if (e.button === 0) return 'left';
-      if (e.button === 1) return 'middle';
-      if (e.button === 2) return 'right';
-      return 'left';
-    };
-
-    let lastMouseMove = 0;
-    dom.browserImg.addEventListener('mousemove', (e) => {
-      if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
-      const now = Date.now();
-      if (now - lastMouseMove < 100) return; // Throttle to ~10 FPS for stability
-      lastMouseMove = now;
-      const { x, y } = getCoordinates(e);
-      if (isNaN(x) || isNaN(y)) return;
-      browserWs.send(JSON.stringify({ type: 'mousemove', x, y }));
-    });
-
-    dom.browserImg.addEventListener('mousedown', (e) => {
-      if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
-      e.preventDefault();
-      const { x, y } = getCoordinates(e);
-      if (isNaN(x) || isNaN(y)) return;
-      browserWs.send(JSON.stringify({ type: 'mousedown', x, y, button: mapButton(e) }));
-    });
-
-    dom.browserImg.addEventListener('mouseup', (e) => {
-      if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
-      e.preventDefault();
-      const { x, y } = getCoordinates(e);
-      if (isNaN(x) || isNaN(y)) return;
-      browserWs.send(JSON.stringify({ type: 'mouseup', x, y, button: mapButton(e) }));
-    });
-
-    // Remove redundant click listener as mousedown/mouseup handles it in browser
-    
-    dom.browserImg.addEventListener('wheel', (e) => {
-      if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
-      e.preventDefault();
-      browserWs.send(JSON.stringify({ type: 'wheel', deltaX: e.deltaX, deltaY: e.deltaY }));
-    });
-
-    // Use window-level delegation for widgets to bypass any container-level pointer issues
-    window.addEventListener('click', (e) => {
+    // Update the click listener:
+    dom.activeWidgetContainer.addEventListener('click', (e) => {
       const btn = e.target.closest('.widget-btn');
       const sendBtn = e.target.closest('.widget-custom-send-btn');
       
@@ -1092,58 +989,60 @@
       if (!widget || widget.classList.contains('locked')) return;
 
       if (btn) {
+        // Lock the widget visually
         widget.classList.add('locked');
         btn.setAttribute('data-selected', 'true');
+
+        // Extract value
         const value = btn.getAttribute('data-value');
         const widgetId = btn.getAttribute('data-widget-id');
+        
+        // Force isLoading to false so the message isn't dropped if clicked immediately
         state.isLoading = false;
+        
+        // Send the response
         sendMessage(`[Widget Response: ${widgetId}] Selected: ${value}`);
+        
         setTimeout(() => clearActiveWidget(), 300);
       } else if (sendBtn) {
         const inputEl = widget.querySelector('.widget-custom-input');
         const value = inputEl ? inputEl.value.trim() : '';
         if (!value) return;
+
         widget.classList.add('locked');
         const widgetId = inputEl.getAttribute('data-widget-id');
+        
+        // Force isLoading to false so the message isn't dropped if clicked immediately
         state.isLoading = false;
+        
         sendMessage(`[Widget Response: ${widgetId}] Custom: ${value}`);
+        
         setTimeout(() => clearActiveWidget(), 300);
       }
     });
 
-    window.addEventListener('keydown', (e) => {
-      // 1. Browser Modal Keyboard Support
-      if (!dom.browserModal.classList.contains('hidden') && browserWs && browserWs.readyState === WebSocket.OPEN) {
-        if (e.key === 'Escape') {
-          closeLiveBrowser();
-          return; 
-        }
-        e.preventDefault();
-        browserWs.send(JSON.stringify({ type: 'keydown', key: e.key }));
-      }
-      
-      // 2. Dynamic Widget Keyboard Support (Enter to Send)
+    // Add keydown listener for Enter key:
+    dom.activeWidgetContainer.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         const inputEl = e.target.closest('.widget-custom-input');
-        if (inputEl) {
-          e.preventDefault();
-          const value = inputEl.value.trim();
-          if (!value) return;
-          const widget = inputEl.closest('.dynamic-widget');
-          if (!widget || widget.classList.contains('locked')) return;
-          widget.classList.add('locked');
-          const widgetId = inputEl.getAttribute('data-widget-id');
-          state.isLoading = false;
-          sendMessage(`[Widget Response: ${widgetId}] Custom: ${value}`);
-          setTimeout(() => clearActiveWidget(), 300);
-        }
-      }
-    });
-
-    window.addEventListener('keyup', (e) => {
-      if (!dom.browserModal.classList.contains('hidden') && browserWs && browserWs.readyState === WebSocket.OPEN) {
+        if (!inputEl) return;
+        
         e.preventDefault();
-        browserWs.send(JSON.stringify({ type: 'keyup', key: e.key }));
+        const value = inputEl.value.trim();
+        if (!value) return;
+
+        const widget = inputEl.closest('.dynamic-widget');
+        if (!widget || widget.classList.contains('locked')) return;
+
+        widget.classList.add('locked');
+        const widgetId = inputEl.getAttribute('data-widget-id');
+        
+        // Force isLoading to false so the message isn't dropped if clicked immediately
+        state.isLoading = false;
+        
+        sendMessage(`[Widget Response: ${widgetId}] Custom: ${value}`);
+        
+        setTimeout(() => clearActiveWidget(), 300);
       }
     });
     dom.sendBtn.addEventListener('click', () => {

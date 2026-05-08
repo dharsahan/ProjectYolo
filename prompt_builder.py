@@ -516,7 +516,8 @@ def _build_memory_context(
     if not memory_service or not text:
         return None
 
-    if hasattr(memory_service, "working_memory_get"):
+    from tools.yolo_memory import TieredMemoryEngine
+    if isinstance(memory_service, TieredMemoryEngine):
         sections = []
         
         # 1. Working Memory (L1) - Short-term context

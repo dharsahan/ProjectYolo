@@ -2,6 +2,7 @@ import os
 import asyncio
 from openai import AsyncOpenAI
 from tools.settings import load_settings
+from pathlib import Path
 
 async def test_vision():
     load_settings()
