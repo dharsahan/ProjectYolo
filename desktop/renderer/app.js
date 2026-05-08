@@ -1043,8 +1043,12 @@
       return 'left';
     };
 
+    let lastMouseMove = 0;
     dom.browserImg.addEventListener('mousemove', (e) => {
       if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
+      const now = Date.now();
+      if (now - lastMouseMove < 50) return; // Throttle to max ~20 FPS
+      lastMouseMove = now;
       const { x, y } = getCoordinates(e);
       browserWs.send(JSON.stringify({ type: 'mousemove', x, y }));
     });
@@ -1052,13 +1056,22 @@
     dom.browserImg.addEventListener('mousedown', (e) => {
       if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
       e.preventDefault();
-      browserWs.send(JSON.stringify({ type: 'mousedown', button: mapButton(e) }));
+      const { x, y } = getCoordinates(e);
+      browserWs.send(JSON.stringify({ type: 'mousedown', x, y, button: mapButton(e) }));
     });
 
     dom.browserImg.addEventListener('mouseup', (e) => {
       if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
       e.preventDefault();
-      browserWs.send(JSON.stringify({ type: 'mouseup', button: mapButton(e) }));
+      const { x, y } = getCoordinates(e);
+      browserWs.send(JSON.stringify({ type: 'mouseup', x, y, button: mapButton(e) }));
+    });
+
+    dom.browserImg.addEventListener('click', (e) => {
+      if (!browserWs || browserWs.readyState !== WebSocket.OPEN) return;
+      e.preventDefault();
+      const { x, y } = getCoordinates(e);
+      browserWs.send(JSON.stringify({ type: 'click', x, y, button: mapButton(e) }));
     });
 
     dom.browserImg.addEventListener('wheel', (e) => {

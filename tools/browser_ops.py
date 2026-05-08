@@ -674,8 +674,12 @@ async def browser_start_screencast(ws: web.WebSocketResponse):
                     if ev_type == "mousemove":
                         await page.mouse.move(data["x"], data["y"])
                     elif ev_type == "mousedown":
+                        if "x" in data and "y" in data:
+                            await page.mouse.move(data["x"], data["y"])
                         await page.mouse.down(button=data.get("button", "left"))
                     elif ev_type == "mouseup":
+                        if "x" in data and "y" in data:
+                            await page.mouse.move(data["x"], data["y"])
                         await page.mouse.up(button=data.get("button", "left"))
                     elif ev_type == "click":
                         await page.mouse.click(data["x"], data["y"], button=data.get("button", "left"))
