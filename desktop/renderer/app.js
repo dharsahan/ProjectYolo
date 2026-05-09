@@ -387,37 +387,7 @@
       <h1 style="font-family: 'Playfair Display', serif; font-style: italic; letter-spacing: -0.02em;">Welcome to Yolo</h1>
       <p style="font-family: 'DM Sans', sans-serif;">Your autonomous AI agent. Ask anything — code, research, system control, and more.</p>
       <p style="font-size:12px; color:var(--text-muted); margin-top:8px;">Session is shared with Telegram &amp; CLI. Type <kbd>/</kbd> for commands.</p>
-      <div class="quick-actions">
-        <button class="quick-action" data-prompt="Help me write a Python script">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
-          Write Code
-        </button>
-        <button class="quick-action" data-prompt="Search the web for the latest AI news">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          Web Search
-        </button>
-        <button class="quick-action" data-prompt="Analyze the files in my current project">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          Analyze Files
-        </button>
-        <button class="quick-action" data-prompt="What can you do?">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          Capabilities
-        </button>
-      </div>
     `;
-    div.querySelectorAll('.quick-action').forEach(btn => {
-      btn.addEventListener('click', () => sendMessage(btn.dataset.prompt));
-    });
-
-    if (typeof Motion !== 'undefined') {
-      const actions = div.querySelectorAll('.quick-action');
-      Motion.animate(
-        actions,
-        { opacity: [0, 1], y: [15, 0] },
-        { delay: Motion.stagger(0.1, { startDelay: 0.2 }), duration: 0.5, easing: [0.2, 0.8, 0.2, 1] }
-      );
-    }
     return div;
   }
 

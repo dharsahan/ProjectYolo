@@ -388,12 +388,16 @@ body {
 
 .messages {
   padding: 40px max(24px, calc(50vw - 420px)) 140px;
-  /* Increased bottom padding for floating bar clearance */
   display: flex;
   flex-direction: column;
   gap: 32px;
   min-height: 100%;
   justify-content: flex-end;
+  box-sizing: border-box;
+}
+
+.messages:has(.welcome-screen) {
+  justify-content: center;
 }
 
 .welcome-screen {
@@ -401,11 +405,12 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
   text-align: center;
   margin: auto;
   max-width: 600px;
-  padding: 40px 20px;
+  padding: 20px;
+  animation: welcomeAppear 0.8s ease-out;
+  flex-shrink: 0;
 }
 
 @keyframes welcomeAppear {
