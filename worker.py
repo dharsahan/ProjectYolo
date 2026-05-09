@@ -17,7 +17,7 @@ def get_active_workers() -> dict[str, asyncio.Task]:
     return _active_workers
 
 
-async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str, memory_service: Any) -> None:
+async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str, memory_service: Any, swarm_id: str = None) -> None:
     """An isolated loop for a specialized worker agent using central orchestration.
 
     Fixes applied:
@@ -49,6 +49,18 @@ async def run_worker_loop(user_id: int, task_id: str, role: str, objective: str,
         f"You are a specialized worker agent taking on the role of: {role}.\n"
         f"Your specific objective is: {objective}\n"
         f"Your Task ID is: {task_id}\n\n"
+    )
+
+    if swarm_id:
+        system_prompt += (
+            f"You are part of a Swarm (Swarm ID: {swarm_id}).\n"
+            "You MUST collaborate with other swarm members to achieve the overall objective.\n"
+            "Use `broadcast_swarm_message(task_id=..., swarm_id=..., role=..., message=...)` to share updates, code, or ask for reviews.\n"
+            "Use `read_swarm_messages(swarm_id=...)` frequently to stay synced with your team.\n"
+            "If you are the Swarm Lead, you should also spawn sub-workers using `spawn_worker(..., swarm_id=...)` to delegate tasks.\n\n"
+        )
+
+    system_prompt += (
         "You operate in an isolated context. You have access to all coding and research tools.\n"
         "CRITICAL: When you have finished the objective, you MUST call `report_completion(task_id=..., summary=...)`.\n"
         "CRITICAL: If you are confused, stuck (e.g. failing tests 3+ times), or blocked by architecture, you MUST call `request_help(task_id=..., reason=..., context=...)`.\n"

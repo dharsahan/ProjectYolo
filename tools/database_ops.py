@@ -113,6 +113,18 @@ def init_db():
             )
         """)
 
+        # Swarm Messages Table: For inter-agent communication
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS swarm_messages (
+                message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                swarm_id TEXT,
+                sender_task_id TEXT,
+                sender_role TEXT,
+                message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Migrations
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -130,6 +142,10 @@ def init_db():
             _ensure_column_exists(conn, "sessions", "pending_confirmation", "TEXT")
             _ensure_column_exists(conn, "background_tasks", "history", "TEXT")
             cursor.execute("INSERT INTO schema_migrations (version) VALUES (1)")
+            
+        if current_version < 2:
+            # Table swarm_messages was added above
+            cursor.execute("INSERT INTO schema_migrations (version) VALUES (2)")
 
 
 def add_cron(user_id: int, task_description: str, interval_minutes: int):
@@ -397,3 +413,41 @@ def close_db():
             _shared_conn = None
 
 
+def add_swarm_message(swarm_id: str, sender_task_id: str, sender_role: str, message: str):
+    """Add a message to the swarm's message bus."""
+    with _conn_ctx() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO swarm_messages (swarm_id, sender_task_id, sender_role, message)
+            VALUES (?, ?, ?, ?)
+            """,
+            (swarm_id, sender_task_id, sender_role, message),
+        )
+
+
+def get_swarm_messages(swarm_id: str, limit: int = 50) -> list[dict]:
+    """Retrieve recent messages for a specific swarm."""
+    with _conn_ctx() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT sender_task_id, sender_role, message, created_at
+            FROM swarm_messages
+            WHERE swarm_id = ?
+            ORDER BY created_at ASC
+            LIMIT ?
+            """,
+            (swarm_id, limit),
+        )
+        rows = cursor.fetchall()
+        
+    return [
+        {
+            "sender_task_id": r[0],
+            "sender_role": r[1],
+            "message": r[2],
+            "created_at": r[3]
+        }
+        for r in rows
+    ]

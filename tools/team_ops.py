@@ -25,7 +25,7 @@ def request_help(task_id: str, reason: str, context: str) -> str:
 
 
 @register_tool()
-async def spawn_worker(user_id: int, role: str, objective: str) -> str:
+async def spawn_worker(user_id: int, role: str, objective: str, swarm_id: str = None) -> str:
     """Manager tool: Spawn an isolated worker agent for a specific sub-task.
 
     Bug 5 fix: Properly handles missing event loop with a fallback.
@@ -45,20 +45,20 @@ async def spawn_worker(user_id: int, role: str, objective: str) -> str:
         def _run_in_thread():
             _loop = asyncio.new_event_loop()
             asyncio.set_event_loop(_loop)
-            _loop.run_until_complete(run_worker_loop(user_id, task_id, role, objective, get_memory()))
+            _loop.run_until_complete(run_worker_loop(user_id, task_id, role, objective, get_memory(), swarm_id=swarm_id))
             _loop.close()
 
         t = threading.Thread(target=_run_in_thread, daemon=True)
         t.start()
-        audit_log("spawn_worker", {"task_id": task_id, "role": role, "fallback": "thread"}, "success")
+        audit_log("spawn_worker", {"task_id": task_id, "role": role, "swarm_id": swarm_id, "fallback": "thread"}, "success")
         return f"Worker spawned (thread fallback) with Task ID: `{task_id}`. Role: {role}. Use `check_workers()` to monitor."
 
     # Normal async path: register the task so it can be cancelled later (Bug 1 fix)
-    task = loop.create_task(run_worker_loop(user_id, task_id, role, objective, get_memory()))
+    task = loop.create_task(run_worker_loop(user_id, task_id, role, objective, get_memory(), swarm_id=swarm_id))
     _active_workers[task_id] = task
 
-    audit_log("spawn_worker", {"task_id": task_id, "role": role}, "success")
-    return f"Worker spawned with Task ID: `{task_id}`. Role: {role}. Use `check_workers()` to monitor status."
+    audit_log("spawn_worker", {"task_id": task_id, "role": role, "swarm_id": swarm_id}, "success")
+    return f"Worker spawned with Task ID: `{task_id}`. Role: {role}. Swarm ID: {swarm_id}. Use `check_workers()` to monitor status."
 
 
 @register_tool()
@@ -203,3 +203,62 @@ def cancel_all_workers(user_id: int) -> str:
 # Import logger at module level
 import logging
 logger = logging.getLogger(__name__)
+
+
+@register_tool()
+async def spawn_swarm(user_id: int, objective: str, roles: list[str]) -> str:
+    """Manager tool: Create a new asynchronous Swarm to tackle a complex objective.
+    
+    This generates a unique swarm_id and spawns a 'Swarm Lead' agent. The Lead is
+    responsible for spawning the sub-agents (based on the provided roles) and coordinating
+    them using the swarm message bus.
+    """
+    swarm_id = f"swarm_{uuid.uuid4().hex[:6]}"
+    lead_role = "Swarm Lead"
+    
+    lead_objective = (
+        f"You are the Swarm Lead for Swarm ID: {swarm_id}.\n"
+        f"The ultimate objective is: {objective}\n"
+        f"You must use `spawn_worker(..., swarm_id='{swarm_id}')` to create the following sub-agents: {', '.join(roles)}.\n"
+        "Coordinate their work using `broadcast_swarm_message` and `read_swarm_messages`.\n"
+        "Wait for them to complete their tasks, synthesize the results, and then call `report_completion`."
+    )
+    
+    # Delegate the actual spawning to the existing spawn_worker logic
+    result = await spawn_worker(user_id, lead_role, lead_objective, swarm_id=swarm_id)
+    
+    audit_log("spawn_swarm", {"swarm_id": swarm_id, "roles": roles}, "success")
+    return f"Swarm `{swarm_id}` created. {result}"
+
+
+@register_tool()
+def broadcast_swarm_message(task_id: str, swarm_id: str, role: str, message: str) -> str:
+    """Worker tool: Broadcast a message to all members of a specific Swarm."""
+    from tools.database_ops import add_swarm_message
+    try:
+        add_swarm_message(swarm_id, task_id, role, message)
+        audit_log("broadcast_swarm_message", {"swarm_id": swarm_id, "sender": role}, "success")
+        return "Message broadcasted to the swarm successfully."
+    except Exception as e:
+        logger.error(f"Failed to broadcast swarm message: {e}")
+        return f"Error broadcasting message: {e}"
+
+
+@register_tool()
+def read_swarm_messages(swarm_id: str, limit: int = 20) -> str:
+    """Worker tool: Read recent messages broadcasted by other agents in the Swarm."""
+    from tools.database_ops import get_swarm_messages
+    try:
+        messages = get_swarm_messages(swarm_id, limit=limit)
+        if not messages:
+            return "No messages in the swarm bus yet."
+            
+        output = [f"--- Recent Messages for Swarm {swarm_id} ---"]
+        for msg in messages:
+            output.append(f"[{msg['created_at']}] {msg['sender_role']} ({msg['sender_task_id']}):\n{msg['message']}\n")
+            
+        audit_log("read_swarm_messages", {"swarm_id": swarm_id, "count": len(messages)}, "success")
+        return "\n".join(output)
+    except Exception as e:
+        logger.error(f"Failed to read swarm messages: {e}")
+        return f"Error reading messages: {e}"
